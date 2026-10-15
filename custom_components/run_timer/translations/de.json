@@ -1,0 +1,173 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Gerät hinzufügen",
+        "description": "Wähle die Entität, die nach einer Laufzeit ausgeschaltet werden soll.",
+        "data": {
+          "entity_id": "Entität",
+          "default_minutes": "Standarddauer"
+        },
+        "data_description": {
+          "entity_id": "Jede Entität, die sich ein- und ausschalten lässt.",
+          "default_minutes": "Minuten bis zum Ausschalten nach dem Einschalten (1–1440)."
+        }
+      }
+    },
+    "error": {
+      "no_on_off": "Diese Entität lässt sich nicht ein- und ausschalten."
+    },
+    "abort": {
+      "already_configured": "Diese Entität wird bereits von Run Timer verwaltet."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Run-Timer-Optionen",
+        "data": {
+          "default_minutes": "Standarddauer",
+          "on_action": "Einschalt-Aktion"
+        },
+        "data_description": {
+          "default_minutes": "Minuten bis zum Ausschalten nach dem Einschalten (1–1440).",
+          "on_action": "Wird beim geplanten Einschalten statt homeassistant.turn_on ausgeführt, z. B. um einen Klimamodus zu setzen. Die Variable entity_id enthält die verwaltete Entität."
+        }
+      }
+    },
+    "error": {
+      "invalid_action": "Die Aktion ist ungültig."
+    }
+  },
+  "entity": {
+    "number": {
+      "default_minutes": {
+        "name": "Standarddauer"
+      }
+    },
+    "sensor": {
+      "off_time": {
+        "name": "Nächstes Aus"
+      },
+      "on_time": {
+        "name": "Nächstes An"
+      }
+    },
+    "time": {
+      "switch_on_at": {
+        "name": "Schaltzeit an"
+      },
+      "switch_off_at": {
+        "name": "Schaltzeit aus"
+      }
+    }
+  },
+  "exceptions": {
+    "not_managed": {
+      "message": "{entity_id} wird nicht von Run Timer verwaltet."
+    },
+    "no_timer": {
+      "message": "{entity_id} ist nicht erreichbar, und es läuft kein Timer."
+    },
+    "in_past": {
+      "message": "Die Zeit für {entity_id} liegt in der Vergangenheit."
+    },
+    "switch_on_failed": {
+      "message": "Einschalten von {entity_id} ist fehlgeschlagen."
+    }
+  },
+  "services": {
+    "extend": {
+      "name": "Verlängern",
+      "description": "Verschiebt die Ausschaltzeit um Minuten. Negative Werte verkürzen; bleibt nichts übrig, wird sofort ausgeschaltet. Ohne Timer zählt ein eingeschaltetes Gerät ab jetzt, ein ausgeschaltetes wird für die Minuten eingeschaltet.",
+      "fields": {
+        "entity_id": {
+          "name": "Entität",
+          "description": "Die verwaltete Entität, z. B. der Ventilator selbst."
+        },
+        "minutes": {
+          "name": "Minuten",
+          "description": "Minuten dazu, negativ zum Verkürzen."
+        }
+      }
+    },
+    "off_in": {
+      "name": "Aus in",
+      "description": "Schaltet die Entität in der angegebenen Zahl Minuten aus.",
+      "fields": {
+        "entity_id": {
+          "name": "Entität",
+          "description": "Die verwaltete Entität, z. B. der Ventilator selbst."
+        },
+        "minutes": {
+          "name": "Minuten",
+          "description": "Minuten ab jetzt."
+        }
+      }
+    },
+    "off_at": {
+      "name": "Aus um",
+      "description": "Setzt eine feste Ausschaltzeit. Eine vergangene Uhrzeit bedeutet morgen.",
+      "fields": {
+        "entity_id": {
+          "name": "Entität",
+          "description": "Die verwaltete Entität, z. B. der Ventilator selbst."
+        },
+        "at": {
+          "name": "Um",
+          "description": "Uhrzeit (HH:MM) oder Datum mit Uhrzeit."
+        }
+      }
+    },
+    "on_in": {
+      "name": "Ein in",
+      "description": "Plant ein Einschalten in der angegebenen Zahl Minuten.",
+      "fields": {
+        "entity_id": {
+          "name": "Entität",
+          "description": "Die verwaltete Entität, z. B. der Ventilator selbst."
+        },
+        "minutes": {
+          "name": "Minuten",
+          "description": "Minuten ab jetzt."
+        },
+        "duration": {
+          "name": "Dauer",
+          "description": "Laufzeit in Minuten nach dem Einschalten; leer heißt Standarddauer."
+        }
+      }
+    },
+    "on_at": {
+      "name": "Ein um",
+      "description": "Plant ein Einschalten. Eine vergangene Uhrzeit bedeutet morgen.",
+      "fields": {
+        "entity_id": {
+          "name": "Entität",
+          "description": "Die verwaltete Entität, z. B. der Ventilator selbst."
+        },
+        "at": {
+          "name": "Um",
+          "description": "Uhrzeit (HH:MM) oder Datum mit Uhrzeit."
+        },
+        "duration": {
+          "name": "Dauer",
+          "description": "Laufzeit in Minuten nach dem Einschalten; leer heißt Standarddauer."
+        }
+      }
+    },
+    "cancel": {
+      "name": "Abbrechen",
+      "description": "Verwirft Ausschaltzeit, geplantes Einschalten oder beides, ohne zu schalten.",
+      "fields": {
+        "entity_id": {
+          "name": "Entität",
+          "description": "Die verwaltete Entität, z. B. der Ventilator selbst."
+        },
+        "what": {
+          "name": "Was",
+          "description": "off, on oder all."
+        }
+      }
+    }
+  }
+}

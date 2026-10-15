@@ -1,0 +1,173 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add a device",
+        "description": "Pick the entity to switch off after a run time.",
+        "data": {
+          "entity_id": "Entity",
+          "default_minutes": "Default run time"
+        },
+        "data_description": {
+          "entity_id": "Any entity that can be switched on and off.",
+          "default_minutes": "Minutes until it is switched off after switching on (1–1440)."
+        }
+      }
+    },
+    "error": {
+      "no_on_off": "This entity cannot be switched on and off."
+    },
+    "abort": {
+      "already_configured": "This entity is already managed by Run Timer."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Run Timer options",
+        "data": {
+          "default_minutes": "Default run time",
+          "on_action": "Switch-on action"
+        },
+        "data_description": {
+          "default_minutes": "Minutes until it is switched off after switching on (1–1440).",
+          "on_action": "Used for planned switch-ons instead of homeassistant.turn_on, e.g. set a climate mode. The variable entity_id holds the managed entity."
+        }
+      }
+    },
+    "error": {
+      "invalid_action": "The action is not valid."
+    }
+  },
+  "entity": {
+    "number": {
+      "default_minutes": {
+        "name": "Default run time"
+      }
+    },
+    "sensor": {
+      "off_time": {
+        "name": "Next stop"
+      },
+      "on_time": {
+        "name": "Next start"
+      }
+    },
+    "time": {
+      "switch_on_at": {
+        "name": "Schedule start"
+      },
+      "switch_off_at": {
+        "name": "Schedule stop"
+      }
+    }
+  },
+  "exceptions": {
+    "not_managed": {
+      "message": "{entity_id} is not managed by Run Timer."
+    },
+    "no_timer": {
+      "message": "{entity_id} is not reachable and has no running timer."
+    },
+    "in_past": {
+      "message": "The time for {entity_id} is in the past."
+    },
+    "switch_on_failed": {
+      "message": "Switching on {entity_id} failed."
+    }
+  },
+  "services": {
+    "extend": {
+      "name": "Extend",
+      "description": "Moves the off time by minutes. Negative values shorten it; if nothing is left, the entity is switched off now. Without a timer an entity that is on counts from now, one that is off is switched on for the minutes.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "The managed entity, e.g. the fan itself."
+        },
+        "minutes": {
+          "name": "Minutes",
+          "description": "Minutes to add, negative to shorten."
+        }
+      }
+    },
+    "off_in": {
+      "name": "Switch off in",
+      "description": "Switches the entity off in the given minutes from now.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "The managed entity, e.g. the fan itself."
+        },
+        "minutes": {
+          "name": "Minutes",
+          "description": "Minutes from now."
+        }
+      }
+    },
+    "off_at": {
+      "name": "Switch off at",
+      "description": "Sets a fixed switch-off time. A time of day that has passed means tomorrow.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "The managed entity, e.g. the fan itself."
+        },
+        "at": {
+          "name": "At",
+          "description": "Time of day (HH:MM) or date and time."
+        }
+      }
+    },
+    "on_in": {
+      "name": "Switch on in",
+      "description": "Plans a switch-on in the given minutes from now.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "The managed entity, e.g. the fan itself."
+        },
+        "minutes": {
+          "name": "Minutes",
+          "description": "Minutes from now."
+        },
+        "duration": {
+          "name": "Duration",
+          "description": "Run time in minutes after the switch-on; default run time if empty."
+        }
+      }
+    },
+    "on_at": {
+      "name": "Switch on at",
+      "description": "Plans a switch-on. A time of day that has passed means tomorrow.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "The managed entity, e.g. the fan itself."
+        },
+        "at": {
+          "name": "At",
+          "description": "Time of day (HH:MM) or date and time."
+        },
+        "duration": {
+          "name": "Duration",
+          "description": "Run time in minutes after the switch-on; default run time if empty."
+        }
+      }
+    },
+    "cancel": {
+      "name": "Cancel",
+      "description": "Drops the off time, the planned switch-on, or both. Does not switch the entity.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "The managed entity, e.g. the fan itself."
+        },
+        "what": {
+          "name": "What",
+          "description": "off, on or all."
+        }
+      }
+    }
+  }
+}

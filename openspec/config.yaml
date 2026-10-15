@@ -1,0 +1,34 @@
+schema: spec-driven
+
+context: |
+  Language: German
+  All artifacts must be written in German (echte Umlaute ä/ö/ü/ß).
+  Keep OpenSpec structural headings and SHALL/MUST keywords in English.
+  Code, README, Dienstnamen und Entitätsnamen sind englisch; Übersetzungen en + de. Bezeichner snake_case.
+
+  Projekt: run_timer, eine Home-Assistant-Custom-Integration (HACS Custom Repository, öffentliches GitHub-Repo, MIT).
+  Zweck: Laufzeit je Gerät. Einschalten startet eine Standarddauer, danach geht das Gerät aus; dazu
+  ±Minuten, „aus in/um“ und einmaliges „ein in/um“. Keine Lovelace-Karte, keine Helfer: die Integration
+  liefert Entitäten je Gerät und Dienste, die Bedienung bauen Bubble-Card-Knöpfe im Dashboard-Generator;
+  dazu ein kleiner Bedienbereich im More-Info-Dialog, der nur diese Dienste aufruft.
+  Wiederkehrende Wochenpläne sind ausdrücklich nicht Teil davon (dafür bleibt nielsfaber/scheduler-component).
+  Ideenquelle und erlaubte Codequelle: jozefnad/homeassistant-quick_timer (MIT, Copyright-Hinweis bleibt).
+  Kein Code aus scheduler-component (GPL-3.0). Öffentliches Repo: nichts Privates (Hosts, IPs, Entitäts-IDs
+  der eigenen Installation) in Code, Tests, Specs oder Doku; Hausinternes gehört ins Wiki `run_timer`.
+
+rules:
+  specs:
+    - Jedes Szenario ist prüfbar und nennt seinen Beleg (Test oder Prüfschritt aus .claude/verify.md).
+  tasks:
+    - Jede Aufgabe nennt, womit sie belegt wird.
+
+operations:
+  apply:
+    guidance:
+      - Nach jedem abgeschlossenen Baustein Code-Review (Subagent ash bzw. mh-code-review), Findings beheben, dann committen.
+      - Fertig heißt, mother führt .claude/verify.md aus und meldet grün; ripley prüft danach, ob die Tests die geänderte Stelle überhaupt messen.
+      - "Verify-Kontrakt laut globaler CLAUDE.md, Abschnitt „Verify-Kontrakt je Projekt“: .claude/verify.md kommt in den Commit mit dem ersten Testkommando oder Deploy und zieht bei jeder Änderung von Testaufruf, Version, Stack, Ablage oder Deploy-Weg im selben Commit mit."
+      - HA-Verhalten und APIs gegen Doku/Core-Code der installierten HA-Version prüfen (samuels), nicht aus dem Gedächtnis.
+  archive:
+    guidance:
+      - Vor dem Archivieren muss mother auf .claude/verify.md grün gemeldet haben, sofern die Datei existiert.

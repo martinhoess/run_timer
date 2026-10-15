@@ -1,0 +1,14 @@
+{
+  "domain": "run_timer",
+  "name": "Run Timer",
+  "after_dependencies": ["frontend", "http", "websocket_api"],
+  "codeowners": ["@martinhoess"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/martinhoess/run_timer",
+  "integration_type": "service",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/martinhoess/run_timer/issues",
+  "requirements": [],
+  "version": "0.1.5"
+}

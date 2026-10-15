@@ -1,0 +1,20 @@
+{
+  "entity": {
+    "sensor": {
+      "off_time": {
+        "default": "mdi:timer-off-outline"
+      },
+      "on_time": {
+        "default": "mdi:timer-play-outline"
+      }
+    },
+    "time": {
+      "switch_on_at": {
+        "default": "mdi:clock-start"
+      },
+      "switch_off_at": {
+        "default": "mdi:clock-end"
+      }
+    }
+  }
+}
