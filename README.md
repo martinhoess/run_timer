@@ -6,8 +6,9 @@ running timer, set a fixed off time, or plan a one-time switch-on.
 
 There is no custom card and nothing to set up as helpers. Each managed device gets five
 entities, and six services do the rest, so any dashboard button (Bubble Card, tile, button
-card) can drive it. The more-info dialog of a managed device also shows a small panel with
-next start/stop, ±15, off in and the schedule times; it only calls the same services.
+card) can drive it. The more-info dialog of a managed device also shows a small panel: start
+and stop with an editable time of day (type `7`, `715` or `7:15`, Enter to apply), ±15 and
+off in 30/60/120 min; it only calls the same services.
 Home Assistant has no extension point for that dialog, so the panel relies on the frontend's
 internal layout; if a frontend update changes it, the panel stays away and everything else
 keeps working.

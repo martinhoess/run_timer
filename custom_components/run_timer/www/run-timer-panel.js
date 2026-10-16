@@ -1,30 +1,28 @@
-// run_timer: panel in the more-info dialog of a managed entity (experiment).
+// run_timer: panel in the more-info dialog of a managed entity.
 //
 // Home Assistant has no extension point for the more-info dialog. This script
 // looks for the dialog in the frontend's DOM and appends a panel; if the
 // frontend changes its structure, the panel silently stays away.
 // Path checked against frontend 20260930.4:
 // home-assistant > ha-more-info-dialog > ha-adaptive-dialog > ha-more-info-info > .content
+//
+// Only parts the dialog itself loads are used (ha-button, ha-icon-button);
+// lazily loaded ones such as ha-time-input are not reliably defined there.
 
 (() => {
   if (window.__runTimerPanel) return;
   window.__runTimerPanel = true;
 
   const PANEL = "run-timer-panel";
+  const CLOSE = "M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z";
   const TEXT = {
     en: {
-      next_start: "Next start", next_stop: "Next stop", none: "–",
-      schedule_start: "Schedule start", schedule_stop: "Schedule stop",
-      set: "Set", clear: "Clear", stop_timer: "Drop timer",
-      off_in: (m) => (m < 60 ? `off in ${m} min` : `off in ${m / 60} h`),
-      in: (t) => `in ${t}`, ago: (t) => `${t} ago`,
+      start: "Start", stop: "Stop", clear: "Clear",
+      off_in: (m) => (m < 60 ? `Off in ${m} min` : `Off in ${m / 60} h`),
     },
     de: {
-      next_start: "Nächstes An", next_stop: "Nächstes Aus", none: "–",
-      schedule_start: "Schaltzeit an", schedule_stop: "Schaltzeit aus",
-      set: "Setzen", clear: "Löschen", stop_timer: "Timer weg",
-      off_in: (m) => (m < 60 ? `aus in ${m} min` : `aus in ${m / 60} h`),
-      in: (t) => `in ${t}`, ago: (t) => `vor ${t}`,
+      start: "Start", stop: "Stopp", clear: "Löschen",
+      off_in: (m) => (m < 60 ? `Aus in ${m} min` : `Aus in ${m / 60} h`),
     },
   };
 
@@ -32,10 +30,17 @@
   let managedAt = 0;
   let lastEntity = null; // entity of the open dialog at the last check
   let pending = null; // running run_timer/list call
+  const warned = new Set();
+  const warn = (what, err) => {
+    if (warned.has(what)) return;
+    warned.add(what);
+    console.warn(`[run_timer] ${what}:`, err);
+  };
 
   const ha = () => document.querySelector("home-assistant");
   const hass = () => ha()?.hass;
-  const text = () => (hass()?.locale?.language?.startsWith("de") ? TEXT.de : TEXT.en);
+  const lang = () => hass()?.locale?.language || "en";
+  const text = () => (lang().startsWith("de") ? TEXT.de : TEXT.en);
 
   async function loadManaged(force = false) {
     const h = hass();
@@ -62,29 +67,61 @@
     return content && info.entityId ? { content, entityId: info.entityId } : null;
   }
 
-  function relative(iso) {
-    const ms = new Date(iso) - Date.now();
-    const min = Math.round(Math.abs(ms) / 60000);
-    const span = min < 60 ? `${min} min` : `${Math.floor(min / 60)} h${min % 60 ? ` ${min % 60} min` : ""}`;
-    return ms >= 0 ? text().in(span) : text().ago(span);
+  // The frontend shows a failed call as a toast and rethrows it; keep the console clean.
+  const call = (service, data) => hass().callService("run_timer", service, data).catch(() => {});
+
+  function timestamp(entityId) {
+    const state = hass()?.states[entityId]?.state;
+    const date = state && !["unknown", "unavailable"].includes(state) ? new Date(state) : null;
+    return date && !Number.isNaN(date.getTime()) ? date : null;
   }
 
-  function clock(iso) {
+  function clock(date) {
     const h = hass();
-    return new Date(iso).toLocaleTimeString(h?.locale?.language || undefined, {
-      hour: "2-digit", minute: "2-digit", timeZone: h?.config?.time_zone,
+    return date.toLocaleTimeString("en-GB", {
+      hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: h?.config?.time_zone,
     });
   }
 
-  function call(service, data) {
-    // The frontend shows the error as a toast and rethrows it; keep the console clean.
-    return hass().callService("run_timer", service, data).catch(() => {});
+  function relative(date) {
+    const minutes = Math.round((date - Date.now()) / 60000);
+    const format = new Intl.RelativeTimeFormat(lang(), { numeric: "auto" });
+    const abs = Math.abs(minutes);
+    if (abs < 60) return format.format(minutes, "minute");
+    if (abs < 48 * 60) {
+      const rest = abs % 60;
+      return minutes > 0 && rest && abs < 600
+        ? `${format.format(Math.trunc(minutes / 60), "hour")} ${new Intl.NumberFormat(lang()).format(rest)} min`
+        : format.format(Math.round(minutes / 60), "hour");
+    }
+    return new Intl.RelativeTimeFormat(lang(), { numeric: "always" }).format(Math.round(minutes / 1440), "day");
   }
 
-  function setTime(entityId, value) {
-    return hass()
-      .callService("time", "set_value", { entity_id: entityId, time: `${value}:00` })
-      .catch(() => {});
+  // "7", "715", "0715", "7:15", "07.15" -> "07:15"; null if not a time of day.
+  function parseTime(value) {
+    const m = value.trim().match(/^(\d{1,2})(?:[:.]?(\d{2}))?$/);
+    if (!m) return null;
+    const hh = Number(m[1]);
+    const mm = Number(m[2] ?? 0);
+    return hh < 24 && mm < 60 ? `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}` : null;
+  }
+
+  // What a line shows: the timestamp sensor, else (stop while off) the fixed off time of day.
+  function shown({ sensor, fixed }) {
+    const date = timestamp(sensor);
+    if (date) return { date, time: clock(date) };
+    const state = fixed && hass()?.states[fixed]?.state;
+    return { date: null, time: state && /^\d{2}:\d{2}/.test(state) ? state.slice(0, 5) : "" };
+  }
+
+  function button(label, onClick) {
+    const b = document.createElement("ha-button");
+    b.setAttribute("appearance", "filled");
+    b.setAttribute("variant", "neutral");
+    b.setAttribute("size", "s");
+    b.textContent = label;
+    b.addEventListener("click", onClick);
+    return b;
   }
 
   function build(entityId, ents) {
@@ -95,86 +132,85 @@
     const root = panel.attachShadow({ mode: "open" });
     root.innerHTML = `
       <style>
-        :host { display: block; margin-top: var(--ha-space-6, 24px); }
-        .box { border-top: 1px solid var(--divider-color); padding-top: 16px; display: grid; gap: 14px; }
-        .rows { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; font-size: 14px; }
-        .label { color: var(--secondary-text-color); }
-        .value { color: var(--primary-text-color); text-align: end; font-variant-numeric: tabular-nums; }
-        .chips { display: flex; flex-wrap: wrap; gap: 8px; }
-        button {
-          font: inherit; font-size: 13px; color: var(--primary-text-color); cursor: pointer;
-          background: var(--secondary-background-color); border: 1px solid var(--divider-color);
-          border-radius: 18px; padding: 6px 12px;
+        :host { display: block; margin-top: var(--ha-space-4, 16px); }
+        .box { border-top: 1px solid var(--divider-color); padding-top: var(--ha-space-3, 12px);
+               display: grid; grid-template-columns: auto auto 1fr auto; align-items: center;
+               column-gap: var(--ha-space-3, 12px); row-gap: var(--ha-space-1, 4px); }
+        .label { color: var(--primary-text-color); }
+        .rel { color: var(--secondary-text-color); font-size: var(--ha-font-size-s, 12px); }
+        input {
+          width: 5ch; font: inherit; font-variant-numeric: tabular-nums; text-align: center;
+          color: var(--primary-text-color); background: var(--input-fill-color, var(--secondary-background-color));
+          border: none; border-bottom: 1px solid var(--input-idle-line-color, var(--divider-color));
+          border-radius: var(--ha-border-radius-sm, 4px) var(--ha-border-radius-sm, 4px) 0 0;
+          padding: 6px 8px;
         }
-        button:hover { border-color: var(--primary-color); }
-        button:focus-visible, input:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
-        .times { display: grid; grid-template-columns: auto 1fr auto auto; gap: 8px 10px; align-items: center; font-size: 14px; }
-        input[type="time"] {
-          font: inherit; color: var(--primary-text-color); background: var(--secondary-background-color);
-          border: 1px solid var(--divider-color); border-radius: 8px; padding: 5px 8px;
-          color-scheme: var(--run-timer-scheme, light dark);
-        }
+        input::placeholder { color: var(--secondary-text-color); }
+        input:focus { outline: none; border-bottom: 2px solid var(--primary-color); padding-bottom: 5px; }
+        .chips { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: var(--ha-space-2, 8px);
+                 padding-top: var(--ha-space-2, 8px); }
       </style>
-      <div class="box">
-        <div class="rows">
-          <span class="label">${t.next_start}</span><span class="value" data-k="on_time"></span>
-          <span class="label">${t.next_stop}</span><span class="value" data-k="off_time"></span>
-        </div>
-        <div class="chips">
-          <button data-extend="-15">−15</button>
-          <button data-extend="15">+15</button>
-          <button data-off-in="30">${t.off_in(30)}</button>
-          <button data-off-in="60">${t.off_in(60)}</button>
-          <button data-off-in="120">${t.off_in(120)}</button>
-          <button data-cancel="off">${t.stop_timer}</button>
-        </div>
-        <div class="times">
-          <span class="label">${t.schedule_start}</span><input type="time" data-time="switch_on_at">
-          <button data-set="switch_on_at">${t.set}</button><button data-clear="on">${t.clear}</button>
-          <span class="label">${t.schedule_stop}</span><input type="time" data-time="switch_off_at">
-          <button data-set="switch_off_at">${t.set}</button><button data-clear="off">${t.clear}</button>
-        </div>
-      </div>`;
-    root.querySelectorAll("[data-extend]").forEach((b) =>
-      b.addEventListener("click", () => call("extend", { entity_id: entityId, minutes: Number(b.dataset.extend) })));
-    root.querySelectorAll("[data-off-in]").forEach((b) =>
-      b.addEventListener("click", () => call("off_in", { entity_id: entityId, minutes: Number(b.dataset.offIn) })));
-    root.querySelectorAll("[data-cancel]").forEach((b) =>
-      b.addEventListener("click", () => call("cancel", { entity_id: entityId, what: b.dataset.cancel })));
-    root.querySelectorAll("[data-clear]").forEach((b) =>
-      b.addEventListener("click", () => {
-        const field = b.dataset.clear === "on" ? "switch_on_at" : "switch_off_at";
-        delete root.querySelector(`[data-time="${field}"]`).dataset.dirty;
-        call("cancel", { entity_id: entityId, what: b.dataset.clear });
-      }));
-    root.querySelectorAll("[data-time]").forEach((input) =>
-      input.addEventListener("input", () => { input.dataset.dirty = "1"; }));
-    root.querySelectorAll("[data-set]").forEach((b) =>
-      b.addEventListener("click", () => {
-        const input = root.querySelector(`[data-time="${b.dataset.set}"]`);
-        delete input.dataset.dirty;
-        if (input.value) setTime(ents[b.dataset.set], input.value);
-      }));
-    panel._update = () => update(panel, ents);
+      <div class="box"></div>`;
+    const box = root.querySelector(".box");
+    const lines = [];
+    for (const [label, sensor, fixed, setService, what] of [
+      [t.start, ents.on_time, null, "on_at", "on"],
+      [t.stop, ents.off_time, ents.switch_off_at, "off_at", "off"],
+    ]) {
+      const name = document.createElement("span");
+      name.className = "label";
+      name.textContent = label;
+      const input = document.createElement("input");
+      input.inputMode = "numeric";
+      input.placeholder = "--:--";
+      input.maxLength = 5;
+      input.setAttribute("aria-label", label);
+      const rel = document.createElement("span");
+      rel.className = "rel";
+      const clear = document.createElement("ha-icon-button");
+      clear.path = CLOSE;
+      clear.label = `${t.clear}: ${label}`;
+      clear.addEventListener("click", () => call("cancel", { entity_id: entityId, what }));
+      const line = { sensor, fixed, input, rel, clear };
+      const commit = () => {
+        const at = parseTime(input.value);
+        // Same time of day within the next 24 h: nothing to change.
+        const { date, time } = shown(line);
+        const same = time === at && (!date || date - Date.now() < 86400000);
+        if (at && !same) call(setService, { entity_id: entityId, at });
+        update();
+      };
+      input.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") input.blur();
+        if (ev.key === "Escape") {
+          ev.preventDefault(); // keep the dialog open
+          ev.stopPropagation();
+          input.value = shown(line).time; // before blur, so no change event fires
+          input.blur();
+        }
+      });
+      input.addEventListener("change", commit);
+      box.append(name, input, rel, clear);
+      lines.push(line);
+    }
+    const chips = document.createElement("div");
+    chips.className = "chips";
+    chips.append(
+      button("−15", () => call("extend", { entity_id: entityId, minutes: -15 })),
+      button("+15", () => call("extend", { entity_id: entityId, minutes: 15 })),
+      ...[30, 60, 120].map((m) => button(t.off_in(m), () => call("off_in", { entity_id: entityId, minutes: m }))),
+    );
+    box.append(chips);
+    function update() {
+      for (const line of lines) {
+        const { date, time } = shown(line);
+        if (root.activeElement !== line.input) line.input.value = time;
+        line.rel.textContent = date ? relative(date) : "";
+        line.clear.style.visibility = time ? "visible" : "hidden";
+      }
+    }
+    panel._update = update;
     return panel;
-  }
-
-  function update(panel, ents) {
-    const h = hass();
-    if (!h) return;
-    const root = panel.shadowRoot;
-    panel.style.setProperty("--run-timer-scheme", h.themes?.darkMode ? "dark" : "light");
-    for (const key of ["on_time", "off_time"]) {
-      const state = h.states[ents[key]]?.state;
-      const valid = state && !["unknown", "unavailable"].includes(state);
-      root.querySelector(`[data-k="${key}"]`).textContent = valid ? `${clock(state)} · ${relative(state)}` : text().none;
-    }
-    for (const key of ["switch_on_at", "switch_off_at"]) {
-      const input = root.querySelector(`[data-time="${key}"]`);
-      if (input.dataset.dirty) continue; // typed but not set yet
-      const state = h.states[ents[key]]?.state;
-      input.value = state && !["unknown", "unavailable"].includes(state) ? state.slice(0, 5) : "";
-    }
   }
 
   // ponytail: polling every 500 ms instead of observing several shadow roots;
@@ -202,5 +238,5 @@
     panel._update();
   }
 
-  setInterval(() => { tick().catch(() => {}); }, 500);
+  setInterval(() => { tick().catch((err) => warn("panel failed", err)); }, 500);
 })();

@@ -35,3 +35,4 @@
 - [x] 6.1 Skript `www/run-timer-panel.js` per `add_extra_js_url`, WebSocket-Befehl `run_timer/list`, nur mit Frontend (D17). Beleg: `tests/test_entities.py` (`test_websocket_list_managed_entities`, `test_frontend_setup_registers_panel`)
 - [x] 6.2 `extend` ohne Timer nach D16, „aus um“ auch beim Einschalten/kurz weg. Beleg: `tests/test_services.py`
 - [x] 6.3 Sichtprüfung auf der Testinstanz: Bereich erscheint bei verwalteten Geräten, Knöpfe lösen die Dienste aus, Fehlermeldungen als Hinweis. Beleg: Prüfung 2026-10-16 (Frontend 20260930.4)
+- [x] 6.4 Kompakte Fassung ohne Card-Helpers (D17): Start/Stopp mit direktem Uhrzeitfeld. Beleg: `tests/test_panel_js.py`, Sichtprüfung 2026-10-16 (0.1.6)
