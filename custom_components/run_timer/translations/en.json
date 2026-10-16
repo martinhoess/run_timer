@@ -10,7 +10,7 @@
         },
         "data_description": {
           "entity_id": "Any entity that can be switched on and off.",
-          "default_minutes": "Minutes until it is switched off after switching on (1–1440)."
+          "default_minutes": "Minutes until it is switched off after switching on (0–1440, 0 = no automatic switch-off; plans and buttons still work)."
         }
       }
     },
@@ -30,7 +30,7 @@
           "on_action": "Switch-on action"
         },
         "data_description": {
-          "default_minutes": "Minutes until it is switched off after switching on (1–1440).",
+          "default_minutes": "Minutes until it is switched off after switching on (0–1440, 0 = no automatic switch-off; plans and buttons still work).",
           "on_action": "Used for planned switch-ons instead of homeassistant.turn_on, e.g. set a climate mode. The variable entity_id holds the managed entity."
         }
       }
@@ -133,7 +133,7 @@
         },
         "duration": {
           "name": "Duration",
-          "description": "Run time in minutes after the switch-on; default run time if empty."
+          "description": "Run time in minutes after the switch-on; default run time if empty, no end with default run time 0."
         }
       }
     },
@@ -151,7 +151,7 @@
         },
         "duration": {
           "name": "Duration",
-          "description": "Run time in minutes after the switch-on; default run time if empty."
+          "description": "Run time in minutes after the switch-on; default run time if empty, no end with default run time 0."
         }
       }
     },

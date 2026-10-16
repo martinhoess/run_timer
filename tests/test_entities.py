@@ -96,7 +96,7 @@ async def test_default_change_applies_next_start(
     assert off_time(hass, entry) == local("2026-10-15 14:10")
 
 
-@pytest.mark.parametrize("value", [0, 1441])
+@pytest.mark.parametrize("value", [-1, 1441])
 async def test_default_out_of_range(hass: HomeAssistant, value: int) -> None:
     """Wert außerhalb des Bereichs."""
     entry = await add_entry(hass)

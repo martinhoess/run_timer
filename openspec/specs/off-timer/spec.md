@@ -19,7 +19,7 @@ Das System SHALL eine Ziel-Entität als „an“ werten, wenn ihr Zustand weder 
 - **Beleg:** pytest `tests/test_off_timer.py`
 
 ### Requirement: Aus-Timer beim Einschalten
-Das System SHALL eine Ausschaltzeit setzen, wenn die Ziel-Entität „an“ meldet und ihr letzter erreichbarer Zustand `off` war oder seit dem Start noch keiner bekannt ist, auch wenn dazwischen `unavailable` lag. Ist „aus um“ gesetzt und liegt in der Zukunft, gilt diese Zeit, sonst jetzt + Standarddauer. War der letzte erreichbare Zustand schon „an“, startet nichts.
+Das System SHALL eine Ausschaltzeit setzen, wenn die Ziel-Entität „an“ meldet und ihr letzter erreichbarer Zustand `off` war oder seit dem Start noch keiner bekannt ist, auch wenn dazwischen `unavailable` lag. Ist „aus um“ gesetzt und liegt in der Zukunft, gilt diese Zeit, sonst jetzt + Standarddauer; bei Standarddauer 0 startet dann kein Timer. War der letzte erreichbare Zustand schon „an“, startet nichts.
 
 #### Scenario: Einschalten am Gerät
 - **WHEN** der Ventilator mit Standarddauer 240 min um 20:00 am Gerät eingeschaltet wird

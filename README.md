@@ -27,7 +27,8 @@ Requires Home Assistant 2026.9.4 or newer (the version the tests run against).
 ## Setup
 
 Settings → Devices & services → Add integration → **Run Timer**. Pick the entity and the
-default run time (1–1440 minutes). Add one entry per device. Any entity that has `turn_on` and
+default run time (0–1440 minutes; 0 means no automatic switch-off, e.g. for a heater you only
+want to plan ahead). Add one entry per device. Any entity that has `turn_on` and
 `turn_off` works: fans, lights, switches, climate, input_boolean, …
 
 Options (⋮ → Configure) change the default run time and an optional **switch-on action**.
@@ -53,13 +54,13 @@ English and German.
 | `number` Default run time | Minutes until switch-off after switching on. Changes apply from the next switch-on. |
 | `sensor` Next stop | When the device will be switched off (`unknown` if no timer runs). |
 | `sensor` Next start | When the plan switches the device on, with date and seconds (`unknown` if nothing is planned). |
-| `time` Schedule start | Planned switch-on (time of day). Setting it plans the next occurrence with the default run time. |
+| `time` Schedule start | Planned switch-on (time of day). Setting it plans the next occurrence with the default run time (no end with default 0). |
 | `time` Schedule stop | Fixed switch-off time (time of day, next occurrence). Survives switching off and on until it is reached. |
 
 ## Behaviour
 
 - Switching on starts the timer: the fixed switch-off time if one is set, otherwise now + default
-  run time. This also applies when the device comes back on after being unavailable while it was
+  run time (none with default run time 0). This also applies when the device comes back on after being unavailable while it was
   off, e.g. a smart plug after a power cut.
 - Switching off by hand drops the running timer. A fixed switch-off time and a planned switch-on
   stay.

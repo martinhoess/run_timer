@@ -200,3 +200,26 @@ async def test_renamed_entity_is_followed(hass: HomeAssistant) -> None:
     assert off_time(hass, entry) == local("2026-10-15 16:00")
     await call(hass, "extend", entity_id="input_boolean.fan2", minutes=15)
     assert off_time(hass, entry) == local("2026-10-15 16:15")
+
+
+async def test_default_zero_switch_on_starts_no_timer(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """Standarddauer 0: Einschalten startet keinen Timer, das Gerät bleibt an."""
+    entry = await add_entry(hass, minutes=0)
+    await switch(hass, True)
+    assert off_time(hass, entry) is None
+    await advance(hass, freezer, timedelta(hours=30))
+    assert hass.states.get(FAN).state == "on"
+
+
+async def test_default_zero_fixed_off_still_applies(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """Standarddauer 0 mit „aus um“: das Gerät geht zur gesetzten Zeit aus."""
+    entry = await add_entry(hass, minutes=0)
+    await call(hass, "off_at", at="13:00")
+    await switch(hass, True)
+    assert off_time(hass, entry) == local("2026-10-15 13:00")
+    await advance(hass, freezer, timedelta(hours=1, minutes=1))
+    assert hass.states.get(FAN).state == "off"

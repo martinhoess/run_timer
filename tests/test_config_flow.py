@@ -91,3 +91,15 @@ async def test_options_invalid_action(hass: HomeAssistant) -> None:
     )
     assert result["type"] is FlowResultType.FORM
     assert result["errors"] == {CONF_ON_ACTION: "invalid_action"}
+
+
+async def test_add_device_with_default_zero(hass: HomeAssistant) -> None:
+    """Standarddauer 0 ist beim Einrichten erlaubt."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"entity_id": FAN, CONF_DEFAULT_MINUTES: 0}
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["options"] == {CONF_DEFAULT_MINUTES: 0}

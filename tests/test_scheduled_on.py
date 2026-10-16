@@ -189,3 +189,79 @@ async def test_waiting_plan_ends_with_fixed_off(
     hass.states.async_set(FAN, "off")
     await hass.async_block_till_done()
     assert hass.states.get(FAN).state == "off"
+
+
+async def test_default_zero_plan_without_duration_stays_on(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """Standarddauer 0: ein Plan ohne Dauer schaltet ein und lässt das Gerät an."""
+    entry = await add_entry(hass, minutes=0)
+    await call(hass, "on_at", at="13:00")
+    await advance(hass, freezer, timedelta(hours=1))
+    assert hass.states.get(FAN).state == "on"
+    assert off_time(hass, entry) is None
+    assert dt_state(hass, entry, "switch_on_at") is None
+    await advance(hass, freezer, timedelta(hours=10))
+    assert hass.states.get(FAN).state == "on"
+
+
+async def test_default_zero_plan_with_duration_ends(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """Standarddauer 0: ein Plan mit Dauer endet wie sonst."""
+    entry = await add_entry(hass, minutes=0)
+    await call(hass, "on_in", minutes=30, duration=45)
+    await advance(hass, freezer, timedelta(minutes=30))
+    assert off_time(hass, entry) == local("2026-10-15 13:15")
+    await advance(hass, freezer, timedelta(minutes=46))
+    assert hass.states.get(FAN).state == "off"
+
+
+async def test_default_zero_open_plan_waits_for_unreachable(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """Standarddauer 0, Plan ohne Ende, Gerät weg: Plan wartet, bis es zurück ist."""
+    entry = await add_entry(hass, minutes=0)
+    await call(hass, "on_at", at="13:00")
+    hass.states.async_set(FAN, "unavailable")
+    await advance(hass, freezer, timedelta(hours=5))
+    assert dt_state(hass, entry, "switch_on_at") == local("2026-10-15 13:00")
+    hass.states.async_set(FAN, "off")
+    await hass.async_block_till_done()
+    assert hass.states.get(FAN).state == "on"
+    assert off_time(hass, entry) is None
+
+
+async def test_default_zero_open_plan_keeps_running_off_time(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """Standarddauer 0: ein offener Plan lässt „aus in 60 min“ stehen."""
+    entry = await add_entry(hass, minutes=0)
+    await switch(hass, True)
+    await call(hass, "off_in", minutes=60)
+    await call(hass, "on_in", minutes=10)
+    await advance(hass, freezer, timedelta(minutes=10))
+    assert off_time(hass, entry) == local("2026-10-15 13:00")
+    await advance(hass, freezer, timedelta(minutes=51))
+    assert hass.states.get(FAN).state == "off"
+
+
+@pytest.mark.parametrize("back", ["on", "off"])
+async def test_default_zero_open_plan_with_passed_off_time(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory, back: str
+) -> None:
+    """Standarddauer 0: Ausschaltzeit lief ab, während das Gerät weg war; der offene Plan holt das Aus nach."""
+    entry = await add_entry(hass, minutes=0)
+    await switch(hass, True)
+    await call(hass, "off_in", minutes=60)
+    await call(hass, "on_in", minutes=10)
+    await advance(hass, freezer, timedelta(minutes=5))
+    hass.states.async_set(FAN, "unavailable")
+    await advance(hass, freezer, timedelta(hours=2))
+    hass.states.async_set(FAN, back)
+    await hass.async_block_till_done()
+    assert hass.states.get(FAN).state == "off"
+    assert off_time(hass, entry) is None
+    assert dt_state(hass, entry, "switch_on_at") is None
+    await switch(hass, True)
+    assert hass.states.get(FAN).state == "on"

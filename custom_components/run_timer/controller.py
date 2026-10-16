@@ -153,7 +153,7 @@ class RunTimerController:
         ):
             # Switched off while Home Assistant was down.
             self.off_at = None
-        if self.on_at is not None and self._plan_end() <= now:
+        if self.on_at is not None and (end := self._plan_end()) is not None and end <= now:
             # Decide before a passed fixed off time is dropped; it may be the plan's end.
             self._set_on(None, None)
         self._set_fixed(
@@ -246,19 +246,24 @@ class RunTimerController:
             self._async_plan_expired,
         )
 
-    def _plan_end(self) -> datetime:
-        """End of the plan: its own duration, else a later fixed off time, else the default."""
+    def _plan_end(self) -> datetime | None:
+        """End of the plan: its own duration, else a later fixed off time, else the default.
+
+        None means open: no duration, no later fixed off time and default run time 0.
+        """
         assert self.on_at is not None
         if self.on_minutes is None and self.off_fixed is not None and self.off_fixed > self.on_at:
             return self.off_fixed
-        return self.on_at + timedelta(minutes=self.on_minutes or self.default_minutes)
+        minutes = self.on_minutes or self.default_minutes
+        return self.on_at + timedelta(minutes=minutes) if minutes else None
 
     @callback
     def _reschedule_plan(self) -> None:
         """Recompute the plan's end after the default run time or fixed off time changed."""
         if self.on_at is None:
             return
-        if self._plan_end() <= dt_util.utcnow():
+        end = self._plan_end()
+        if end is not None and end <= dt_util.utcnow():
             self._set_on(None, None)
         else:
             self._schedule_expire()
@@ -267,8 +272,9 @@ class RunTimerController:
     def _start_auto(self, now: datetime) -> None:
         if self.off_fixed is not None and self.off_fixed > now:
             self._set_off_at(self.off_fixed)
-        else:
+        elif self.default_minutes:
             self._set_off_at(now + timedelta(minutes=self.default_minutes))
+        # Default run time 0: no automatic switch-off.
 
     # ----- timer callbacks ---------------------------------------------
 
@@ -326,14 +332,24 @@ class RunTimerController:
         """Run the planned switch-on."""
         end = self._plan_end()
         keeps_fixed = end == self.off_fixed
+        if end is None:
+            # Open plan (default run time 0): keep an off time that is already running,
+            # but one that passed while the entity was unreachable is due now.
+            if self.off_at is not None and self.off_at <= dt_util.utcnow():
+                self._set_on(None, None)
+                await self._async_off_due()
+                self._changed()
+                return
+            end = self.off_at
+            keeps_fixed = end == self.off_fixed
         self._set_on(None, None)
-        if end <= dt_util.utcnow():
+        if end is not None and end <= dt_util.utcnow():
             self._changed()
             return
         await self._async_switch_on_until(end, keep_fixed=keeps_fixed)
 
-    async def _async_switch_on_until(self, end: datetime, *, keep_fixed: bool) -> None:
-        """Switch on with the given off time; drop it again if switching on failed."""
+    async def _async_switch_on_until(self, end: datetime | None, *, keep_fixed: bool) -> None:
+        """Switch on with the given off time (None: none); drop it again if switching on failed."""
         if not keep_fixed:
             self._set_fixed(None)
         # Set the off time before switching on; the state change keeps it.
