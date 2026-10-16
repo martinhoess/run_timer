@@ -119,9 +119,10 @@ data:
 
 ## Credits
 
-Based on ideas and code patterns from
-[Quick Timer](https://github.com/jozefnad/homeassistant-quick_timer) by jozefnad (MIT).
-See `LICENSE`.
+- [Quick Timer](https://github.com/jozefnad/homeassistant-quick_timer) by jozefnad (MIT):
+  ideas and code patterns, including hooking a panel into the more-info dialog. See `LICENSE`.
+- Time Off by sfox38: the model of fixed entities per device, with a default duration that
+  starts on every switch-on. No code was taken; the repository is no longer available on GitHub.
 
 ## License
 
