@@ -539,8 +539,15 @@ class RunTimerController:
             return
         if not is_on(new):
             return
+        if previous is None and self._hold_run:
+            # First state after a restart of a held run: follow the condition, as the
+            # catch-up does for a reachable entity; a stored grace time may be void.
+            self._apply_hold(now)
+            self._changed()
         if self.off_at is not None and self.off_at <= now:
             await self._async_off_due()
+            return
+        if previous is None and self._hold_run:
             return
         if previous is not None and previous != STATE_OFF:
             # Still on, e.g. another climate mode or back from unavailable.
@@ -550,10 +557,6 @@ class RunTimerController:
         from_plan, self._off_from_plan = self._off_from_plan, False
         if from_plan or (self.off_at is not None and previous is None):
             # A plan sets its own end (an open plan none); it is not held.
-            return
-        if previous is None and self._hold_run:
-            # First state after a restart of a held run: follow the condition, not the default.
-            await self._async_follow_hold()
             return
         self._start_auto(now)
         self._changed()

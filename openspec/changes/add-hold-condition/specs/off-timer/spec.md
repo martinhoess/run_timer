@@ -55,8 +55,8 @@ Das System SHALL Ausschaltzeit und „aus um“ über einen Neustart erhalten. E
 
 #### Scenario: Gerät meldet sich erst nach dem Start
 - **WHEN** das Gerät beim Start `unavailable` ist und danach „an“ meldet
-- **THEN** startet die Standarddauer; ein gespeicherter Timer bleibt stattdessen bestehen, wenn es einen gibt; ein gehaltener Lauf folgt der Bedingung, ist sie inzwischen falsch, beginnt der Nachlauf
-- **Beleg:** pytest `tests/test_restore.py`, `tests/test_hold.py` (`test_restart_unreachable_then_on_follows_hold`)
+- **THEN** folgt ein gehaltener Lauf zuerst der Bedingung: ist sie inzwischen falsch, beginnt der Nachlauf, ist sie wieder wahr, fällt ein gespeicherter Nachlauf weg, ein abgelaufener schaltet bei weiter falscher Bedingung aus; sonst bleibt ein gespeicherter Timer bestehen, und ohne einen startet die Standarddauer
+- **Beleg:** pytest `tests/test_restore.py`, `tests/test_hold.py` (`test_restart_unreachable_then_on_follows_hold`, `test_restart_unreachable_grace_dropped_when_true`, `test_restart_unreachable_passed_grace_still_false`)
 
 #### Scenario: Echter Startablauf
 - **WHEN** der Eintrag geladen wird, bevor Home Assistant fertig gestartet ist, und eine Ausschaltzeit verpasst wurde
