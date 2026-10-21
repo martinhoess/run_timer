@@ -398,14 +398,23 @@ async def test_restart_unreachable_grace_dropped_when_true(
     assert held(hass, entry)
 
 
-async def test_restart_unreachable_passed_grace_still_false(
-    hass: HomeAssistant, hass_storage: dict[str, Any]
+@pytest.mark.parametrize(
+    ("stored_off", "state", "shown"),
+    [("2026-10-15 11:58", "off", None), ("2026-10-15 12:10", "on", "2026-10-15 12:10")],
+)
+async def test_restart_unreachable_grace_still_false(
+    hass: HomeAssistant,
+    hass_storage: dict[str, Any],
+    stored_off: str,
+    state: str,
+    shown: str | None,
 ) -> None:
-    """Neustart im Nachlauf, Gerät erst nicht erreichbar, Bedingung weiter falsch: abgelaufener Nachlauf schaltet aus."""
+    """Neustart im Nachlauf, Gerät erst nicht erreichbar, Bedingung weiter falsch: abgelaufener schaltet aus, künftiger bleibt."""
     await room(hass, False)
     hass.states.async_set(FAN, "unavailable")
-    stored(hass_storage, hold_applied=False, off_at=local("2026-10-15 11:58"))
-    await add_entry(hass, entry_id=ENTRY_ID, hold=IN_ROOM)
+    stored(hass_storage, hold_applied=False, off_at=local(stored_off))
+    entry = await add_entry(hass, entry_id=ENTRY_ID, hold=IN_ROOM)
     hass.states.async_set(FAN, "on")
     await hass.async_block_till_done()
-    assert hass.states.get(FAN).state == "off"
+    assert hass.states.get(FAN).state == state
+    assert off_time(hass, entry) == (local(shown) if shown else None)
