@@ -345,3 +345,38 @@ async def test_unloaded_controller_ignores_hold(hass: HomeAssistant) -> None:
     await controller._async_follow_hold()
     assert controller.off_at is None
     assert not controller._timers
+
+
+async def test_switch_off_clears_held(hass: HomeAssistant) -> None:
+    """Gehaltenes Gerät von Hand aus: held ist falsch."""
+    await room(hass, True)
+    entry = await add_entry(hass, hold=IN_ROOM)
+    await switch(hass, True)
+    assert held(hass, entry)
+    await switch(hass, False)
+    assert not held(hass, entry)
+
+
+async def test_restart_unreachable_then_on_follows_hold(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """Neustart, Gerät erst nicht erreichbar, Bedingung inzwischen falsch: Nachlauf statt Standarddauer."""
+    await room(hass, False)
+    hass.states.async_set(FAN, "unavailable")
+    stored(hass_storage, hold_applied=True)
+    entry = await add_entry(hass, entry_id=ENTRY_ID, minutes=0, hold=IN_ROOM)
+    hass.states.async_set(FAN, "on")
+    await hass.async_block_till_done()
+    assert off_time(hass, entry) == local("2026-10-15 12:15")
+
+
+async def test_options_change_while_held_applies_now(hass: HomeAssistant) -> None:
+    """Bedingung ändern, während sie hält: der Lauf folgt sofort der neuen."""
+    await room(hass, True)
+    entry = await add_entry(hass, hold=IN_ROOM)
+    await switch(hass, True)
+    hass.config_entries.async_update_entry(
+        entry, options={**entry.options, "hold_template": "{{ is_state('binary_sensor.room', 'off') }}"}
+    )
+    await hass.async_block_till_done()
+    assert off_time(hass, entry) == local("2026-10-15 12:15")

@@ -19,3 +19,8 @@ Das System SHALL in den Optionen je Gerät ein optionales Template „Halten, so
 - **WHEN** der Nutzer `is_state('binary_sensor.room', 'on')` ohne `{{ }}` speichern will
 - **THEN** zeigt der Dialog am Feld den Hinweis, dass es kein Template ist
 - **Beleg:** pytest `tests/test_config_flow.py` (`test_options_static_hold_template`)
+
+#### Scenario: Bedingung ändern, während sie hält
+- **WHEN** ein Gerät gehalten wird und der Nutzer ein Template speichert, das gerade falsch ist
+- **THEN** beginnt sofort der Nachlauf
+- **Beleg:** pytest `tests/test_hold.py` (`test_options_change_while_held_applies_now`)

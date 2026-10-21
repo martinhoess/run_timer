@@ -35,6 +35,34 @@ Das System SHALL eine Ausschaltzeit setzen, wenn die Ziel-Entität „an“ meld
 - **THEN** ist die Ausschaltzeit nach dem Start leer und nach dem Einschalten 16:30
 - **Beleg:** pytest `tests/test_restore.py`
 
+### Requirement: Neustart von Home Assistant
+Das System SHALL Ausschaltzeit und „aus um“ über einen Neustart erhalten. Eine während des Neustarts verpasste Ausschaltzeit SHALL nach dem vollständigen Start ausgeführt werden. Ist das Gerät nach dem Start an oder meldet es erst später an, ohne Ausschaltzeit, SHALL der Aus-Timer wie beim Einschalten beginnen. Ein Lauf, der vor dem Neustart einer Haltebedingung folgte, SHALL ihr stattdessen weiter folgen (siehe „Halten nach Bedingung“). Die Wiederherstellung SHALL erst nach dem vollständigen Start von Home Assistant laufen.
+
+#### Scenario: Neustart mit laufendem Timer
+- **WHEN** die Ausschaltzeit 00:00 ist und Home Assistant von 22:00 bis 22:05 neu startet
+- **THEN** ist die Ausschaltzeit danach weiter 00:00
+- **Beleg:** pytest `tests/test_restore.py`
+
+#### Scenario: Ausschaltzeit während Neustart verpasst
+- **WHEN** die Ausschaltzeit 00:00 ist und Home Assistant von 23:55 bis 00:10 nicht läuft
+- **THEN** schaltet run_timer das Gerät nach dem Start aus
+- **Beleg:** pytest `tests/test_restore.py`
+
+#### Scenario: Gerät an ohne Timer nach Start
+- **WHEN** das Gerät eingeschaltet wurde, während Home Assistant nicht lief
+- **THEN** startet nach dem Start ein Aus-Timer mit der Standarddauer
+- **Beleg:** pytest `tests/test_restore.py`
+
+#### Scenario: Gerät meldet sich erst nach dem Start
+- **WHEN** das Gerät beim Start `unavailable` ist und danach „an“ meldet
+- **THEN** startet die Standarddauer; ein gespeicherter Timer bleibt stattdessen bestehen, wenn es einen gibt; ein gehaltener Lauf folgt der Bedingung, ist sie inzwischen falsch, beginnt der Nachlauf
+- **Beleg:** pytest `tests/test_restore.py`, `tests/test_hold.py` (`test_restart_unreachable_then_on_follows_hold`)
+
+#### Scenario: Echter Startablauf
+- **WHEN** der Eintrag geladen wird, bevor Home Assistant fertig gestartet ist, und eine Ausschaltzeit verpasst wurde
+- **THEN** wird erst nach `homeassistant_started` ausgeschaltet
+- **Beleg:** pytest `tests/test_restore.py`
+
 ## ADDED Requirements
 
 ### Requirement: Halten nach Bedingung
@@ -87,5 +115,5 @@ Ist ein Template „Halten, solange“ gesetzt, SHALL das System einen Lauf, der
 
 #### Scenario: Neustart
 - **WHEN** die Bedingung vor einem Neustart hielt und beim Start wahr bzw. falsch ist
-- **THEN** hält sie weiter ohne Ausschaltzeit bzw. beginnt der Nachlauf beim Start; ein gespeicherter Nachlauf fällt bei wahrer Bedingung weg; ist das Gerät beim Start aus, ist `held` falsch
-- **Beleg:** pytest `tests/test_hold.py` (`test_restart_keeps_hold`, `test_restart_condition_false_starts_grace`, `test_restart_drops_grace_when_true`, `test_restart_device_off_not_held`)
+- **THEN** hält sie weiter ohne Ausschaltzeit bzw. beginnt der Nachlauf beim Start; ein gespeicherter Nachlauf fällt bei wahrer Bedingung weg; ist das Gerät beim Start aus oder wird es von Hand ausgeschaltet, ist `held` falsch
+- **Beleg:** pytest `tests/test_hold.py` (`test_restart_keeps_hold`, `test_restart_condition_false_starts_grace`, `test_restart_drops_grace_when_true`, `test_restart_device_off_not_held`, `test_switch_off_clears_held`)

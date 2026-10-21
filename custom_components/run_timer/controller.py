@@ -532,8 +532,8 @@ class RunTimerController:
             return
         if new.state == STATE_OFF:
             self._off_from_plan = False
-            self._hold_run = False
-            if self.off_at is not None:
+            was_held, self._hold_run = self._hold_run, False
+            if self.off_at is not None or was_held:
                 self._set_off_at(None)
                 self._changed()
             return
@@ -550,6 +550,10 @@ class RunTimerController:
         from_plan, self._off_from_plan = self._off_from_plan, False
         if from_plan or (self.off_at is not None and previous is None):
             # A plan sets its own end (an open plan none); it is not held.
+            return
+        if previous is None and self._hold_run:
+            # First state after a restart of a held run: follow the condition, not the default.
+            await self._async_follow_hold()
             return
         self._start_auto(now)
         self._changed()
