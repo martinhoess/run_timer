@@ -27,16 +27,21 @@
         "title": "Run-Timer-Optionen",
         "data": {
           "default_minutes": "Standarddauer",
-          "on_action": "Einschalt-Aktion"
+          "on_action": "Einschalt-Aktion",
+          "hold_template": "Halten, solange",
+          "hold_minutes": "Nachlauf"
         },
         "data_description": {
           "default_minutes": "Minuten bis zum Ausschalten nach dem Einschalten (0–1440, 0 = kein automatisches Aus; Pläne und Knöpfe gehen trotzdem).",
-          "on_action": "Wird beim geplanten Einschalten statt homeassistant.turn_on ausgeführt, z. B. um einen Klimamodus zu setzen. Die Variable entity_id enthält die verwaltete Entität."
+          "on_action": "Wird beim geplanten Einschalten statt homeassistant.turn_on ausgeführt, z. B. um einen Klimamodus zu setzen. Die Variable entity_id enthält die verwaltete Entität.",
+          "hold_template": "Jinja-Template; solange es wahr ergibt, schaltet die Standarddauer nicht ab, z. B. mit is_state('binary_sensor.room_occupancy', 'on') oder states('person.me') != 'home'. Gilt nur, wenn das Gerät ohne „aus um“ eingeschaltet wurde; Knöpfe, Dienste und Pläne haben Vorrang. Leer = aus.",
+          "hold_minutes": "Minuten bis zum Ausschalten, nachdem die Bedingung falsch wurde (0–1440)."
         }
       }
     },
     "error": {
-      "invalid_action": "Die Aktion ist ungültig."
+      "invalid_action": "Die Aktion ist ungültig.",
+      "static_template": "Das ist kein Template, es ergibt nie „wahr“. Fehlen die doppelten geschweiften Klammern?"
     }
   },
   "entity": {
@@ -47,7 +52,16 @@
     },
     "sensor": {
       "off_time": {
-        "name": "Nächstes Aus"
+        "name": "Nächstes Aus",
+        "state_attributes": {
+          "held": {
+            "name": "Gehalten",
+            "state": {
+              "true": "Ja",
+              "false": "Nein"
+            }
+          }
+        }
       },
       "on_time": {
         "name": "Nächstes An"

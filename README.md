@@ -43,6 +43,14 @@ climate mode. The variable `entity_id` holds the managed entity:
     hvac_mode: cool
 ```
 
+**Hold while** keeps the device on as long as a template renders true and switches it off a
+**grace time** (default 15 minutes) after it turned false. Examples:
+
+```jinja
+{{ is_state('binary_sensor.living_room_occupancy', 'on') }}   {# on until you leave the room #}
+{{ states('person.me') != 'home' }}                           {# on while nobody is home #}
+```
+
 ## Entities
 
 They are added to the device of the managed entity, or to an own device if it has none. The
@@ -52,7 +60,7 @@ English and German.
 | Entity | Meaning |
 |---|---|
 | `number` Default run time | Minutes until switch-off after switching on. Changes apply from the next switch-on. |
-| `sensor` Next stop | When the device will be switched off (`unknown` if no timer runs). |
+| `sensor` Next stop | When the device will be switched off (`unknown` if no timer runs). Attribute `held` is true while the hold condition keeps it on. |
 | `sensor` Next start | When the plan switches the device on, with date and seconds (`unknown` if nothing is planned). |
 | `time` Schedule start | Planned switch-on (time of day). Setting it plans the next occurrence with the default run time (no end with default 0). |
 | `time` Schedule stop | Fixed switch-off time (time of day, next occurrence). Survives switching off and on until it is reached. |
@@ -62,6 +70,10 @@ English and German.
 - Switching on starts the timer: the fixed switch-off time if one is set, otherwise now + default
   run time (none with default run time 0). This also applies when the device comes back on after being unavailable while it was
   off, e.g. a smart plug after a power cut.
+- With a hold condition, a run started this way has no off time while the condition is true; once
+  it turns false, the off time is now + grace time, and it is dropped again if the condition turns
+  true before. Buttons and services (`extend`, `off_in`, `off_at`, `cancel`), plans and a fixed
+  switch-off time take precedence: the run then ignores the condition until the next switch-on.
 - Switching off by hand drops the running timer. A fixed switch-off time and a planned switch-on
   stay.
 - A planned switch-on wins over a running timer. With its own `duration` it also wins over a fixed

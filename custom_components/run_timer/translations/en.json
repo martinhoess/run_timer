@@ -27,16 +27,21 @@
         "title": "Run Timer options",
         "data": {
           "default_minutes": "Default run time",
-          "on_action": "Switch-on action"
+          "on_action": "Switch-on action",
+          "hold_template": "Hold while",
+          "hold_minutes": "Grace time"
         },
         "data_description": {
           "default_minutes": "Minutes until it is switched off after switching on (0–1440, 0 = no automatic switch-off; plans and buttons still work).",
-          "on_action": "Used for planned switch-ons instead of homeassistant.turn_on, e.g. set a climate mode. The variable entity_id holds the managed entity."
+          "on_action": "Used for planned switch-ons instead of homeassistant.turn_on, e.g. set a climate mode. The variable entity_id holds the managed entity.",
+          "hold_template": "Jinja template; while it renders true, the default run time does not switch off, e.g. with is_state('binary_sensor.room_occupancy', 'on') or states('person.me') != 'home'. Applies only when the device was switched on without a fixed off time; buttons, services and plans take precedence. Empty = off.",
+          "hold_minutes": "Minutes until switching off after the condition turned false (0–1440)."
         }
       }
     },
     "error": {
-      "invalid_action": "The action is not valid."
+      "invalid_action": "The action is not valid.",
+      "static_template": "This is not a template and never renders true. Are the double curly braces missing?"
     }
   },
   "entity": {
@@ -47,7 +52,16 @@
     },
     "sensor": {
       "off_time": {
-        "name": "Next stop"
+        "name": "Next stop",
+        "state_attributes": {
+          "held": {
+            "name": "Held",
+            "state": {
+              "true": "Yes",
+              "false": "No"
+            }
+          }
+        }
       },
       "on_time": {
         "name": "Next start"

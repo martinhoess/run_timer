@@ -20,6 +20,8 @@ from homeassistant.util import dt as dt_util
 
 from custom_components.run_timer.const import (
     CONF_DEFAULT_MINUTES,
+    CONF_HOLD_MINUTES,
+    CONF_HOLD_TEMPLATE,
     CONF_ON_ACTION,
     DOMAIN,
 )
@@ -52,11 +54,16 @@ async def add_entry(
     minutes: int = 240,
     on_action: list[dict[str, Any]] | None = None,
     entry_id: str | None = None,
+    hold: str | None = None,
+    hold_minutes: int = 15,
 ) -> MockConfigEntry:
     """Add and set up a run_timer entry."""
     options: dict[str, Any] = {CONF_DEFAULT_MINUTES: minutes}
     if on_action is not None:
         options[CONF_ON_ACTION] = on_action
+    if hold is not None:
+        options[CONF_HOLD_TEMPLATE] = hold
+        options[CONF_HOLD_MINUTES] = hold_minutes
     kwargs: dict[str, Any] = {"entry_id": entry_id} if entry_id else {}
     entry = MockConfigEntry(
         domain=DOMAIN,

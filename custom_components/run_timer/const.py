@@ -4,9 +4,12 @@ DOMAIN = "run_timer"
 
 CONF_DEFAULT_MINUTES = "default_minutes"
 CONF_ON_ACTION = "on_action"
+CONF_HOLD_TEMPLATE = "hold_template"
+CONF_HOLD_MINUTES = "hold_minutes"
 
 DEFAULT_MINUTES_MIN = 0  # 0: no automatic switch-off
 DEFAULT_MINUTES_MAX = 1440
+DEFAULT_HOLD_MINUTES = 15
 
 STORAGE_VERSION = 1
 

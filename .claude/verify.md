@@ -13,7 +13,7 @@ uv run -q --python 3.14 --no-project --with-requirements requirements_test.txt p
   Home Assistant `2026.9.4` mit, also dieselbe Version wie `hacs.json` → `homeassistant`.
   Ändert sich die Mindestversion, ziehen beide im selben Commit mit.
 - Python 3.14 (Vorgabe des Testpakets), `uv` baut eine Wegwerf-Umgebung, das System-Python bleibt unberührt.
-- Stand 2026-10-17: 99 grün, nichts übersprungen (auch gegen HA 2026.10.1 grün). `tests/test_panel_js.py` braucht `node` (in GitHub Actions vorhanden), ohne `node` wird er übersprungen.
+- Stand 2026-10-21: 124 grün, nichts übersprungen. `tests/test_panel_js.py` braucht `node` (in GitHub Actions vorhanden), ohne `node` wird er übersprungen.
 - `hassfest` lokal (Beleg 2026-10-15: „Invalid integrations: 0“), Core-Skripte im Tag der Mindestversion:
 
   ```bash

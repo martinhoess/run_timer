@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from datetime import timedelta
+import json
+from pathlib import Path
 
 from freezegun.api import FrozenDateTimeFactory
 import pytest
@@ -10,9 +12,15 @@ from pytest_homeassistant_custom_component.common import async_mock_service
 
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
-from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.data_entry_flow import FlowResultType, InvalidData
 
-from custom_components.run_timer.const import CONF_DEFAULT_MINUTES, CONF_ON_ACTION, DOMAIN
+from custom_components.run_timer.const import (
+    CONF_DEFAULT_MINUTES,
+    CONF_HOLD_MINUTES,
+    CONF_HOLD_TEMPLATE,
+    CONF_ON_ACTION,
+    DOMAIN,
+)
 
 from .conftest import FAN, add_entry, advance, call
 
@@ -103,3 +111,49 @@ async def test_add_device_with_default_zero(hass: HomeAssistant) -> None:
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["options"] == {CONF_DEFAULT_MINUTES: 0}
+
+
+async def test_options_hold_template(hass: HomeAssistant) -> None:
+    """Haltebedingung setzen."""
+    entry = await add_entry(hass)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    template = "{{ is_state('binary_sensor.room', 'on') }}"
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {CONF_DEFAULT_MINUTES: 60, CONF_HOLD_TEMPLATE: template, CONF_HOLD_MINUTES: 10},
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.options[CONF_HOLD_TEMPLATE] == template
+    assert entry.options[CONF_HOLD_MINUTES] == 10
+
+
+async def test_options_invalid_hold_template(hass: HomeAssistant) -> None:
+    """Ungültiges Template wird abgelehnt."""
+    entry = await add_entry(hass)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    with pytest.raises(InvalidData) as err:
+        await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            {CONF_DEFAULT_MINUTES: 60, CONF_HOLD_TEMPLATE: "{{ is_state(", CONF_HOLD_MINUTES: 10},
+        )
+    assert CONF_HOLD_TEMPLATE in err.value.schema_errors
+    assert CONF_HOLD_TEMPLATE not in entry.options
+
+
+async def test_options_static_hold_template(hass: HomeAssistant) -> None:
+    """Text ohne Template-Klammern wird abgelehnt."""
+    entry = await add_entry(hass)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {
+            CONF_DEFAULT_MINUTES: 60,
+            CONF_HOLD_TEMPLATE: "is_state('binary_sensor.room', 'on')",
+            CONF_HOLD_MINUTES: 10,
+        },
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {CONF_HOLD_TEMPLATE: "static_template"}
+    for lang in ("en", "de"):
+        path = Path(__file__).parents[1] / f"custom_components/run_timer/translations/{lang}.json"
+        assert json.loads(path.read_text())["options"]["error"]["static_template"]

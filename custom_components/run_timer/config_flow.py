@@ -17,17 +17,22 @@ from homeassistant.core import callback, split_entity_id
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.script import async_validate_actions_config
+from homeassistant.helpers.template import Template
 from homeassistant.helpers.selector import (
     ActionSelector,
     EntitySelector,
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
+    TemplateSelector,
 )
 
 from .const import (
     CONF_DEFAULT_MINUTES,
+    CONF_HOLD_MINUTES,
+    CONF_HOLD_TEMPLATE,
     CONF_ON_ACTION,
+    DEFAULT_HOLD_MINUTES,
     DEFAULT_MINUTES_MAX,
     DEFAULT_MINUTES_MIN,
     DOMAIN,
@@ -92,7 +97,7 @@ class RunTimerConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class RunTimerOptionsFlow(OptionsFlow):
-    """Change default run time and switch-on action."""
+    """Change default run time, switch-on action and hold condition."""
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -107,17 +112,25 @@ class RunTimerOptionsFlow(OptionsFlow):
                 )
             except (vol.Invalid, HomeAssistantError):
                 errors[CONF_ON_ACTION] = "invalid_action"
-            else:
+            # TemplateSelector already rejects syntax errors; text without {{ }} never changes.
+            hold = (user_input.get(CONF_HOLD_TEMPLATE) or "").strip()
+            if hold and Template(hold, self.hass).is_static:
+                errors[CONF_HOLD_TEMPLATE] = "static_template"
+            if not errors:
                 return self.async_create_entry(
                     data={
                         CONF_DEFAULT_MINUTES: int(user_input[CONF_DEFAULT_MINUTES]),
                         CONF_ON_ACTION: actions,
+                        CONF_HOLD_TEMPLATE: hold,
+                        CONF_HOLD_MINUTES: int(user_input[CONF_HOLD_MINUTES]),
                     }
                 )
         schema = vol.Schema(
             {
                 vol.Required(CONF_DEFAULT_MINUTES): _MINUTES,
                 vol.Optional(CONF_ON_ACTION): ActionSelector(),
+                vol.Optional(CONF_HOLD_TEMPLATE): TemplateSelector(),
+                vol.Required(CONF_HOLD_MINUTES, default=DEFAULT_HOLD_MINUTES): _MINUTES,
             }
         )
         return self.async_show_form(

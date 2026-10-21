@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.core import HomeAssistant
@@ -35,6 +36,11 @@ class OffTimeSensor(RunTimerEntity, SensorEntity):
     def native_value(self) -> datetime | None:
         """Return the off time."""
         return self.controller.off_at
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Show whether the hold condition keeps the entity on."""
+        return {"held": self.controller.holding}
 
 
 class OnTimeSensor(RunTimerEntity, SensorEntity):

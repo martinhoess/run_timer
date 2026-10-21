@@ -28,18 +28,34 @@ from homeassistant.core import (
     State,
     callback,
 )
-from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.exceptions import (
+    HomeAssistantError,
+    ServiceValidationError,
+    TemplateError,
+)
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.event import (
+    TrackTemplate,
+    TrackTemplateResult,
     async_track_point_in_utc_time,
     async_track_state_change_event,
+    async_track_template_result,
 )
 from homeassistant.helpers.script import Script, async_validate_actions_config
 from homeassistant.helpers.start import async_at_started
 from homeassistant.helpers.storage import Store
+from homeassistant.helpers.template import Template, result_as_boolean
 from homeassistant.util import dt as dt_util
 
-from .const import CONF_DEFAULT_MINUTES, CONF_ON_ACTION, DOMAIN, STORAGE_VERSION
+from .const import (
+    CONF_DEFAULT_MINUTES,
+    CONF_HOLD_MINUTES,
+    CONF_HOLD_TEMPLATE,
+    CONF_ON_ACTION,
+    DEFAULT_HOLD_MINUTES,
+    DOMAIN,
+    STORAGE_VERSION,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -106,6 +122,14 @@ class RunTimerController:
         self._last_known: str | None = None
         # off_at was set by a plan that is switching the entity on.
         self._off_from_plan = False
+        # This run follows the hold condition (started with the default, no manual change since).
+        self._hold_run = False
+        # Condition value this run last acted on; a change from it is a transition.
+        self._hold_applied = False
+        # Last result of the hold template; False without one.
+        self._hold_true = False
+        self._hold_unsub: CALLBACK_TYPE | None = None
+        self._started = False
 
     # ----- lifecycle ---------------------------------------------------
 
@@ -114,6 +138,16 @@ class RunTimerController:
         """Return the default run time in minutes."""
         return int(self.entry.options[CONF_DEFAULT_MINUTES])
 
+    @property
+    def hold_minutes(self) -> int:
+        """Return the grace time after the hold condition turned false."""
+        return int(self.entry.options.get(CONF_HOLD_MINUTES, DEFAULT_HOLD_MINUTES))
+
+    @property
+    def holding(self) -> bool:
+        """Return True while the hold condition keeps the entity on."""
+        return self._hold_run and self._hold_applied
+
     async def async_load(self) -> None:
         """Load stored times and start once Home Assistant runs."""
         data = await self._store.async_load() or {}
@@ -121,6 +155,8 @@ class RunTimerController:
         self.off_fixed = _parse(data.get("off_fixed"))
         self.on_at = _parse(data.get("on_at"))
         self.on_minutes = data.get("on_minutes")
+        self._hold_run = bool(data.get("hold_run"))
+        self._hold_applied = bool(data.get("hold_applied"))
         self._unsubs.append(async_at_started(self.hass, self._async_started))
 
     async def async_unload(self) -> None:
@@ -128,12 +164,16 @@ class RunTimerController:
         for unsub in self._unsubs:
             unsub()
         self._unsubs.clear()
+        self._started = False
+        self._track_hold(None)
         for cancel in self._timers.values():
             cancel()
         self._timers.clear()
         await self._store.async_save(self._data())
 
     async def _async_started(self, _hass: HomeAssistant) -> None:
+        self._started = True
+        self._track_hold(self.entry.options.get(CONF_HOLD_TEMPLATE))
         self._unsubs.append(
             async_track_state_change_event(
                 self.hass, self.target, self._async_state_changed
@@ -167,12 +207,18 @@ class RunTimerController:
             else:
                 # Due, entity unreachable: wait, but not past the plan's end.
                 self._reschedule_plan()
+        state = self.hass.states.get(self.target)
+        if state is not None and state.state == STATE_OFF:
+            self._hold_run = False
+        if self._hold_run and is_on(state):
+            # The condition may have changed while Home Assistant was down.
+            self._apply_hold(now)
         if self.off_at is not None:
             if self.off_at > now:
                 self._set_off_at(self.off_at)
             else:
                 await self._async_off_due()
-        elif is_on(self.hass.states.get(self.target)):
+        elif is_on(state) and not self._hold_run:
             self._start_auto(now)
         self._changed()
 
@@ -189,6 +235,9 @@ class RunTimerController:
         """React to changed options."""
         self._script = None
         self._reschedule_plan()
+        if self._started:
+            self._track_hold(self.entry.options.get(CONF_HOLD_TEMPLATE))
+            self.hass.async_create_task(self._async_follow_hold())
         self._changed()
 
     def _data(self) -> dict[str, Any]:
@@ -197,6 +246,8 @@ class RunTimerController:
             "off_fixed": _dump(self.off_fixed),
             "on_at": _dump(self.on_at),
             "on_minutes": self.on_minutes,
+            "hold_run": self._hold_run,
+            "hold_applied": self._hold_applied,
         }
 
     @callback
@@ -270,11 +321,80 @@ class RunTimerController:
 
     @callback
     def _start_auto(self, now: datetime) -> None:
+        self._hold_run = False
         if self.off_fixed is not None and self.off_fixed > now:
             self._set_off_at(self.off_fixed)
-        elif self.default_minutes:
+            return
+        self._hold_run = self._hold_unsub is not None
+        self._hold_applied = self._hold_run and self._hold_true
+        if self._hold_applied:
+            return
+        if self.default_minutes:
             self._set_off_at(now + timedelta(minutes=self.default_minutes))
         # Default run time 0: no automatic switch-off.
+
+    # ----- hold condition ----------------------------------------------
+
+    @callback
+    def _track_hold(self, text: str | None) -> None:
+        """(Re)start tracking the hold template; None or empty stops it."""
+        if self._hold_unsub is not None:
+            self._hold_unsub()
+            self._hold_unsub = None
+        self._hold_true = False
+        if not text:
+            return
+        info = async_track_template_result(
+            self.hass,
+            [TrackTemplate(Template(text, self.hass), None)],
+            self._hold_result,
+        )
+        # The first result only sets _hold_true: _hold_unsub is still None here.
+        info.async_refresh()
+        self._hold_unsub = info.async_remove
+
+    @callback
+    def _hold_result(
+        self, _event: Event[EventStateChangedData] | None, updates: list[TrackTemplateResult]
+    ) -> None:
+        result = updates[-1].result
+        held = not isinstance(result, TemplateError) and result_as_boolean(result)
+        if held == self._hold_true:
+            return
+        self._hold_true = held
+        if self._hold_unsub is not None:
+            self.hass.async_create_task(self._async_follow_hold())
+
+    @callback
+    def _apply_hold(self, now: datetime) -> bool:
+        """Act on a change of the condition since this run last did; return True if it did.
+
+        True: no off time. False after true: grace time, unless an off time already runs.
+        """
+        if self._hold_true == self._hold_applied:
+            return False
+        self._hold_applied = self._hold_true
+        if self._hold_true:
+            self._set_off_at(None)
+        elif self.off_at is None:
+            self._set_off_at(now + timedelta(minutes=self.hold_minutes))
+        return True
+
+    async def _async_follow_hold(self) -> None:
+        """Follow the hold condition while the run is on and reachable."""
+        if (
+            not self._started
+            or not self._hold_run
+            or not is_on(self.hass.states.get(self.target))
+        ):
+            return
+        now = dt_util.utcnow()
+        if not self._apply_hold(now):
+            return
+        self._changed()
+        if self.off_at is not None and self.off_at <= now:
+            # Grace time 0.
+            await self._async_off_due()
 
     # ----- timer callbacks ---------------------------------------------
 
@@ -350,6 +470,7 @@ class RunTimerController:
 
     async def _async_switch_on_until(self, end: datetime | None, *, keep_fixed: bool) -> None:
         """Switch on with the given off time (None: none); drop it again if switching on failed."""
+        self._hold_run = False
         if not keep_fixed:
             self._set_fixed(None)
         # Set the off time before switching on; the state change keeps it.
@@ -411,6 +532,7 @@ class RunTimerController:
             return
         if new.state == STATE_OFF:
             self._off_from_plan = False
+            self._hold_run = False
             if self.off_at is not None:
                 self._set_off_at(None)
                 self._changed()
@@ -422,10 +544,12 @@ class RunTimerController:
             return
         if previous is not None and previous != STATE_OFF:
             # Still on, e.g. another climate mode or back from unavailable.
+            await self._async_follow_hold()
             return
         # Switched on: from off, or first real state since start.
         from_plan, self._off_from_plan = self._off_from_plan, False
-        if self.off_at is not None and (from_plan or previous is None):
+        if from_plan or (self.off_at is not None and previous is None):
+            # A plan sets its own end (an open plan none); it is not held.
             return
         self._start_auto(now)
         self._changed()
@@ -475,6 +599,7 @@ class RunTimerController:
                         )
                 return
             base = now
+        self._hold_run = False
         new = base + delta
         if new <= now:
             self._set_fixed(None)
@@ -489,6 +614,7 @@ class RunTimerController:
 
     async def async_off_in(self, minutes: int) -> None:
         """Switch off in minutes from now; while off, this is a fixed off time."""
+        self._hold_run = False
         when = dt_util.utcnow() + timedelta(minutes=minutes)
         if self._running():
             self._set_fixed(None)
@@ -501,6 +627,7 @@ class RunTimerController:
         """Set the fixed off time."""
         when = resolve_at(at, dt_util.utcnow())
         self._require_future(when)
+        self._hold_run = False
         self._set_fixed(when)
         if self._running():
             self._set_off_at(when)
@@ -522,6 +649,7 @@ class RunTimerController:
     async def async_cancel(self, what: str) -> None:
         """Drop off time and fixed off time, the plan, or both."""
         if what in ("off", "all"):
+            self._hold_run = False
             self._set_off_at(None)
             self._set_fixed(None)
         if what in ("on", "all"):
