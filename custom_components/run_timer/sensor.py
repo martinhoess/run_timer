@@ -39,8 +39,8 @@ class OffTimeSensor(RunTimerEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Show whether the hold condition keeps the entity on."""
-        return {"held": self.controller.holding}
+        """Show whether the hold condition keeps the entity on and when the timer started."""
+        return {"held": self.controller.holding, "started_at": self.controller.off_started}
 
 
 class OnTimeSensor(RunTimerEntity, SensorEntity):

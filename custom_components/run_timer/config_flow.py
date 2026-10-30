@@ -24,18 +24,26 @@ from homeassistant.helpers.selector import (
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
     TemplateSelector,
+    TimeSelector,
 )
 
 from .const import (
+    CONF_AT_TIME,
     CONF_DEFAULT_MINUTES,
     CONF_HOLD_MINUTES,
     CONF_HOLD_TEMPLATE,
+    CONF_MODE,
     CONF_ON_ACTION,
     DEFAULT_HOLD_MINUTES,
     DEFAULT_MINUTES_MAX,
     DEFAULT_MINUTES_MIN,
     DOMAIN,
+    MODE_OFF,
+    MODE_ON,
 )
 
 _MINUTES = NumberSelector(
@@ -120,6 +128,8 @@ class RunTimerOptionsFlow(OptionsFlow):
                 return self.async_create_entry(
                     data={
                         CONF_DEFAULT_MINUTES: int(user_input[CONF_DEFAULT_MINUTES]),
+                        CONF_MODE: user_input[CONF_MODE],
+                        CONF_AT_TIME: user_input.get(CONF_AT_TIME) or "",
                         CONF_ON_ACTION: actions,
                         CONF_HOLD_TEMPLATE: hold,
                         CONF_HOLD_MINUTES: int(user_input[CONF_HOLD_MINUTES]),
@@ -128,6 +138,14 @@ class RunTimerOptionsFlow(OptionsFlow):
         schema = vol.Schema(
             {
                 vol.Required(CONF_DEFAULT_MINUTES): _MINUTES,
+                vol.Required(CONF_MODE, default=MODE_OFF): SelectSelector(
+                    SelectSelectorConfig(
+                        options=[MODE_OFF, MODE_ON],
+                        mode=SelectSelectorMode.LIST,
+                        translation_key=CONF_MODE,
+                    )
+                ),
+                vol.Optional(CONF_AT_TIME): TimeSelector(),
                 vol.Optional(CONF_ON_ACTION): ActionSelector(),
                 vol.Optional(CONF_HOLD_TEMPLATE): TemplateSelector(),
                 vol.Required(CONF_HOLD_MINUTES, default=DEFAULT_HOLD_MINUTES): _MINUTES,

@@ -60,13 +60,19 @@ English and German.
 | Entity | Meaning |
 |---|---|
 | `number` Default run time | Minutes until switch-off after switching on. Changes apply from the next switch-on. |
-| `sensor` Next stop | When the device will be switched off (`unknown` if no timer runs). Attribute `held` is true while the hold condition keeps it on. |
+| `sensor` Next stop | When the device will be switched off (`unknown` if no timer runs). Attribute `held` is true while the hold condition keeps it on, `started_at` says since when the timer runs, for progress bars. |
 | `sensor` Next start | When the plan switches the device on, with date and seconds (`unknown` if nothing is planned). |
-| `time` Schedule start | Planned switch-on (time of day). Setting it plans the next occurrence with the default run time (no end with default 0). |
+| `time` Schedule start | Planned switch-on (time of day). Setting it plans the next occurrence with the default run time or until the time of day (no end with default 0 and no time of day, or in mode `on`). |
 | `time` Schedule stop | Fixed switch-off time (time of day, next occurrence). Survives switching off and on until it is reached. |
 
 ## Behaviour
 
+- Options **Mode** and **Time of day**: mode `off` (default) switches off after the timer, mode `on` is the other way
+  round: switching off plans the switch-on, with the time of day or after the default run time, and the device then stays on.
+  An existing plan stays, switching on by hand drops it, a failed switch-on plans again, the hold condition does not apply. A time of day counts instead
+  of the default run time in both modes. Changed options apply from the next switching, except that an
+  entity that is off plans at once when set to mode `on`. After a restart an entity that is off gets a plan again,
+  even if the last one was cancelled.
 - Switching on starts the timer: the fixed switch-off time if one is set, otherwise now + default
   run time (none with default run time 0). This also applies when the device comes back on after being unavailable while it was
   off, e.g. a smart plug after a power cut.

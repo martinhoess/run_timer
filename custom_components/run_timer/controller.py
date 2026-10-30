@@ -48,12 +48,16 @@ from homeassistant.helpers.template import Template, result_as_boolean
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    CONF_AT_TIME,
     CONF_DEFAULT_MINUTES,
     CONF_HOLD_MINUTES,
     CONF_HOLD_TEMPLATE,
+    CONF_MODE,
     CONF_ON_ACTION,
     DEFAULT_HOLD_MINUTES,
     DOMAIN,
+    MODE_OFF,
+    MODE_ON,
     STORAGE_VERSION,
 )
 
@@ -86,7 +90,7 @@ def resolve_at(value: datetime | time, now: datetime) -> datetime:
         return dt_util.as_utc(value)
     local_now = dt_util.as_local(now)
     target = datetime.combine(local_now.date(), value, tzinfo=tz)
-    if target <= local_now:
+    if target.timestamp() <= local_now.timestamp():  # Not `<=`: same tzinfo ignores fold.
         target = datetime.combine(local_now.date() + timedelta(days=1), value, tzinfo=tz)
     return dt_util.as_utc(target)
 
@@ -111,6 +115,7 @@ class RunTimerController:
             hass, STORAGE_VERSION, f"{DOMAIN}.{entry.entry_id}"
         )
         self.off_at: datetime | None = None
+        self.off_started: datetime | None = None
         self.off_fixed: datetime | None = None
         self.on_at: datetime | None = None
         self.on_minutes: int | None = None
@@ -120,6 +125,7 @@ class RunTimerController:
         self._script: Script | None = None
         # Last reachable state seen; None until the entity reported one.
         self._last_known: str | None = None
+        self._last_mode = entry.options.get(CONF_MODE, MODE_OFF)
         # off_at was set by a plan that is switching the entity on.
         self._off_from_plan = False
         # This run follows the hold condition (started with the default, no manual change since).
@@ -144,6 +150,11 @@ class RunTimerController:
         return int(self.entry.options.get(CONF_HOLD_MINUTES, DEFAULT_HOLD_MINUTES))
 
     @property
+    def mode(self) -> str:
+        """Return what the timer does: switch off (default) or switch on."""
+        return self.entry.options.get(CONF_MODE, MODE_OFF)
+
+    @property
     def holding(self) -> bool:
         """Return True while the hold condition keeps the entity on."""
         return self._hold_run and self._hold_applied
@@ -152,6 +163,7 @@ class RunTimerController:
         """Load stored times and start once Home Assistant runs."""
         data = await self._store.async_load() or {}
         self.off_at = _parse(data.get("off_at"))
+        self.off_started = _parse(data.get("off_started"))
         self.off_fixed = _parse(data.get("off_fixed"))
         self.on_at = _parse(data.get("on_at"))
         self.on_minutes = data.get("on_minutes")
@@ -192,7 +204,7 @@ class RunTimerController:
             self.off_at is not None and self.off_at > now
         ):
             # Switched off while Home Assistant was down.
-            self.off_at = None
+            self._set_off_at(None)
         if self.on_at is not None and (end := self._plan_end()) is not None and end <= now:
             # Decide before a passed fixed off time is dropped; it may be the plan's end.
             self._set_on(None, None)
@@ -210,6 +222,7 @@ class RunTimerController:
         state = self.hass.states.get(self.target)
         if state is not None and state.state == STATE_OFF:
             self._hold_run = False
+            self._plan_auto_on(now)
         if self._hold_run and is_on(state):
             # The condition may have changed while Home Assistant was down.
             self._apply_hold(now)
@@ -238,11 +251,16 @@ class RunTimerController:
         if self._started:
             self._track_hold(self.entry.options.get(CONF_HOLD_TEMPLATE))
             self.hass.async_create_task(self._async_follow_hold())
+            state = self.hass.states.get(self.target)
+            if self._last_mode != MODE_ON and state is not None and state.state == STATE_OFF:
+                self._plan_auto_on(dt_util.utcnow())
+        self._last_mode = self.mode
         self._changed()
 
     def _data(self) -> dict[str, Any]:
         return {
             "off_at": _dump(self.off_at),
+            "off_started": _dump(self.off_started),
             "off_fixed": _dump(self.off_fixed),
             "on_at": _dump(self.on_at),
             "on_minutes": self.on_minutes,
@@ -273,6 +291,7 @@ class RunTimerController:
     @callback
     def _set_off_at(self, when: datetime | None) -> None:
         self.off_at = when
+        self.off_started = (self.off_started or dt_util.utcnow()) if when else None
         self._schedule("retry", None, self._async_off_timer)
         self._schedule("off", when, self._async_off_timer)
 
@@ -305,8 +324,24 @@ class RunTimerController:
         assert self.on_at is not None
         if self.on_minutes is None and self.off_fixed is not None and self.off_fixed > self.on_at:
             return self.off_fixed
-        minutes = self.on_minutes or self.default_minutes
-        return self.on_at + timedelta(minutes=minutes) if minutes else None
+        if self.on_minutes:
+            return self.on_at + timedelta(minutes=self.on_minutes)
+        return None if self.mode == MODE_ON else self._auto_time(self.on_at)
+
+    def _auto_time(self, start: datetime) -> datetime | None:
+        """Next automatic switching after start: the time of day, else the default run time."""
+        if at_time := self.entry.options.get(CONF_AT_TIME):
+            parsed = dt_util.parse_time(at_time)
+            assert parsed is not None
+            return resolve_at(parsed, start)
+        return start + timedelta(minutes=self.default_minutes) if self.default_minutes else None
+
+    @callback
+    def _plan_auto_on(self, now: datetime) -> None:
+        """Mode on: the entity went off, plan its way back. A plan already set stays."""
+        if self.mode == MODE_ON and self.on_at is None and (when := self._auto_time(now)):
+            self._set_on(when, None)
+            self._changed()
 
     @callback
     def _reschedule_plan(self) -> None:
@@ -325,13 +360,15 @@ class RunTimerController:
         if self.off_fixed is not None and self.off_fixed > now:
             self._set_off_at(self.off_fixed)
             return
+        if self.mode == MODE_ON:
+            return
         self._hold_run = self._hold_unsub is not None
         self._hold_applied = self._hold_run and self._hold_true
         if self._hold_applied:
             return
-        if self.default_minutes:
-            self._set_off_at(now + timedelta(minutes=self.default_minutes))
-        # Default run time 0: no automatic switch-off.
+        if when := self._auto_time(now):
+            self._set_off_at(when)
+        # Default run time 0 and no time of day: no automatic switch-off.
 
     # ----- hold condition ----------------------------------------------
 
@@ -482,6 +519,7 @@ class RunTimerController:
         ):
             self._off_from_plan = False
             self._set_off_at(None)
+            self._plan_auto_on(dt_util.utcnow())
             self._changed()
 
     async def _async_turn_on(self) -> bool:
@@ -536,6 +574,8 @@ class RunTimerController:
             if self.off_at is not None or was_held:
                 self._set_off_at(None)
                 self._changed()
+            if previous != STATE_OFF:  # Back from unavailable is no switch-off, a cancel stays.
+                self._plan_auto_on(now)
             return
         if not is_on(new):
             return
@@ -558,6 +598,8 @@ class RunTimerController:
         if from_plan or (self.off_at is not None and previous is None):
             # A plan sets its own end (an open plan none); it is not held.
             return
+        if self.mode == MODE_ON and previous == STATE_OFF:
+            self._set_on(None, None)  # Switched on by hand: the way back is moot.
         self._start_auto(now)
         self._changed()
 

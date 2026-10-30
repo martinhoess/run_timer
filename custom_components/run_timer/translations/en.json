@@ -27,12 +27,16 @@
         "title": "Run Timer options",
         "data": {
           "default_minutes": "Default run time",
+          "mode": "Mode",
+          "at_time": "Time of day",
           "on_action": "Switch-on action",
           "hold_template": "Hold while",
           "hold_minutes": "Grace time"
         },
         "data_description": {
           "default_minutes": "Minutes until it is switched off after switching on (0–1440, 0 = no automatic switch-off; plans and buttons still work).",
+          "mode": "Off: switching on starts the timer, then the device switches off. On: switching off starts the timer, then the device switches on; the hold condition does not apply.",
+          "at_time": "When set, the next occurrence of this time counts instead of the default run time. Leave empty to use the default run time.",
           "on_action": "Used for planned switch-ons instead of homeassistant.turn_on, e.g. set a climate mode. The variable entity_id holds the managed entity.",
           "hold_template": "Jinja template; while it renders true, the default run time does not switch off, e.g. with is_state('binary_sensor.room_occupancy', 'on') or states('person.me') != 'home'. Applies only when the device was switched on without a fixed off time; buttons, services and plans take precedence. Empty = off.",
           "hold_minutes": "Minutes until switching off after the condition turned false (0–1440)."
@@ -147,7 +151,7 @@
         },
         "duration": {
           "name": "Duration",
-          "description": "Run time in minutes after the switch-on; default run time if empty, no end with default run time 0."
+          "description": "Run time in minutes after the switch-on. If empty: until the time of day if one is set, else the default run time; no end with default run time 0 or in mode on."
         }
       }
     },
@@ -165,7 +169,7 @@
         },
         "duration": {
           "name": "Duration",
-          "description": "Run time in minutes after the switch-on; default run time if empty, no end with default run time 0."
+          "description": "Run time in minutes after the switch-on. If empty: until the time of day if one is set, else the default run time; no end with default run time 0 or in mode on."
         }
       }
     },
@@ -181,6 +185,14 @@
           "name": "What",
           "description": "off, on or all."
         }
+      }
+    }
+  },
+  "selector": {
+    "mode": {
+      "options": {
+        "off": "Switch off after the timer",
+        "on": "Switch on after the timer"
       }
     }
   }
