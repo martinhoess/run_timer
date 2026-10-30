@@ -19,7 +19,7 @@ Das System SHALL eine Ziel-Entität als „an“ werten, wenn ihr Zustand weder 
 - **Beleg:** pytest `tests/test_off_timer.py`
 
 ### Requirement: Aus-Timer beim Einschalten
-Das System SHALL eine Ausschaltzeit setzen, wenn die Ziel-Entität „an“ meldet und ihr letzter erreichbarer Zustand `off` war oder seit dem Start noch keiner bekannt ist, auch wenn dazwischen `unavailable` lag. Ist „aus um“ gesetzt und liegt in der Zukunft, gilt diese Zeit, sonst jetzt + Standarddauer; bei Standarddauer 0 startet dann kein Timer. Ist eine Haltebedingung gesetzt und wahr, startet ebenfalls kein Timer (siehe „Halten nach Bedingung“). War der letzte erreichbare Zustand schon „an“, startet nichts.
+Das System SHALL eine Ausschaltzeit setzen, wenn die Ziel-Entität „an“ meldet und ihr letzter erreichbarer Zustand `off` war oder seit dem Start noch keiner bekannt ist, auch wenn dazwischen `unavailable` lag. Ist „aus um“ gesetzt und liegt in der Zukunft, gilt diese Zeit, sonst das nächste Vorkommen der Uhrzeit, falls gesetzt, sonst jetzt + Standarddauer; bei Standarddauer 0 startet dann kein Timer. Ist eine Haltebedingung gesetzt und wahr, startet ebenfalls kein Timer (siehe „Halten nach Bedingung“). War der letzte erreichbare Zustand schon „an“, startet nichts.
 
 #### Scenario: Einschalten am Gerät
 - **WHEN** der Ventilator mit Standarddauer 240 min um 20:00 am Gerät eingeschaltet wird
@@ -178,7 +178,7 @@ Das System SHALL Ausschaltzeit und „aus um“ über einen Neustart erhalten. E
 - **Beleg:** pytest `tests/test_restore.py`
 
 ### Requirement: Halten nach Bedingung
-Ist ein Template „Halten, solange“ gesetzt, SHALL das System einen Lauf, der mit der Standarddauer beginnt (Einschalten ohne „aus um“), nach der Bedingung führen: ist das Template wahr, gibt es keine Ausschaltzeit; wird es falsch, ist die Ausschaltzeit jetzt + Nachlauf; wird es vorher wieder wahr, fällt sie weg. Ein Rendering-Fehler SHALL als falsch zählen. Nur ein Wechsel gegenüber dem Wert, nach dem der Lauf zuletzt gehandelt hat, SHALL zählen; ein Wechsel, während das Gerät nicht erreichbar ist, SHALL bei seiner Rückkehr nachgeholt werden. `extend`, `off_in`, `off_at`, `cancel` und ein Plan, auch ein offener, SHALL Vorrang haben: bis zum nächsten Einschalten folgt der Lauf der Bedingung nicht mehr. Der Sensor „Nächstes Aus“ SHALL das Attribut `held` zeigen, wahr, solange die Bedingung das Gerät hält.
+Ist ein Template „Halten, solange“ gesetzt, SHALL das System einen Lauf, der mit der Standarddauer beginnt (Einschalten ohne „aus um“), nach der Bedingung führen: ist das Template wahr, gibt es keine Ausschaltzeit; wird es falsch, ist die Ausschaltzeit jetzt + Nachlauf; wird es vorher wieder wahr, fällt sie weg. Ein Rendering-Fehler SHALL als falsch zählen. Nur ein Wechsel gegenüber dem Wert, nach dem der Lauf zuletzt gehandelt hat, SHALL zählen; ein Wechsel, während das Gerät nicht erreichbar ist, SHALL bei seiner Rückkehr nachgeholt werden. `extend`, `off_in`, `off_at`, `cancel` und ein Plan, auch ein offener, SHALL Vorrang haben: bis zum nächsten Einschalten folgt der Lauf der Bedingung nicht mehr. Der Sensor „Nächstes Aus“ SHALL das Attribut `held` zeigen, wahr, solange die Bedingung das Gerät hält. Im Modus `on` SHALL die Bedingung nicht wirken.
 
 #### Scenario: Raum verlassen
 - **WHEN** die Bedingung wahr ist, das Gerät eingeschaltet wird und die Bedingung 2 h später falsch wird (Nachlauf 15 min)
@@ -229,3 +229,24 @@ Ist ein Template „Halten, solange“ gesetzt, SHALL das System einen Lauf, der
 - **WHEN** die Bedingung vor einem Neustart hielt und beim Start wahr bzw. falsch ist
 - **THEN** hält sie weiter ohne Ausschaltzeit bzw. beginnt der Nachlauf beim Start; ein gespeicherter Nachlauf fällt bei wahrer Bedingung weg; ist das Gerät beim Start aus oder wird es von Hand ausgeschaltet, ist `held` falsch
 - **Beleg:** pytest `tests/test_hold.py` (`test_restart_keeps_hold`, `test_restart_condition_false_starts_grace`, `test_restart_drops_grace_when_true`, `test_restart_device_off_not_held`, `test_switch_off_clears_held`)
+
+### Requirement: Uhrzeit statt Standarddauer
+Ist eine Uhrzeit gesetzt, SHALL das Einschalten im Modus `off` die Ausschaltzeit auf deren nächstes Vorkommen setzen statt auf jetzt + Standarddauer, auch bei Standarddauer 0. Ein Plan ohne eigene Dauer endet entsprechend am nächsten Vorkommen nach der Planzeit. Ein gesetztes „aus um“ behält Vorrang.
+
+#### Scenario: Aus um 18:00
+- **WHEN** um 12:00 das Gerät eingeschaltet wird und die Uhrzeit 18:00 gesetzt ist
+- **THEN** ist die Ausschaltzeit 18:00, unabhängig von der Standarddauer
+- **Beleg:** pytest `tests/test_auto_mode.py`
+
+#### Scenario: Uhrzeit schon vorbei
+- **WHEN** um 12:00 das Gerät eingeschaltet wird und die Uhrzeit 04:00 gesetzt ist
+- **THEN** ist die Ausschaltzeit 04:00 des Folgetags
+- **Beleg:** pytest `tests/test_auto_mode.py`
+
+### Requirement: Startzeit des Timers
+Der Sensor „Next stop“ SHALL im Attribut `started_at` nennen, seit wann der laufende Timer läuft, und `None` ohne Timer. Verschieben der Ausschaltzeit SHALL die Startzeit nicht ändern. Sie MUST einen Neustart überstehen.
+
+#### Scenario: Timer läuft und wird verlängert
+- **WHEN** das Gerät um 12:00 eingeschaltet und um 12:30 per `extend` verlängert wird
+- **THEN** bleibt `started_at` 12:00; nach dem Ausschalten ist es `None`
+- **Beleg:** pytest `tests/test_auto_mode.py`

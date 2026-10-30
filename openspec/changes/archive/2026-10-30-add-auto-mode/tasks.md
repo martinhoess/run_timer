@@ -6,4 +6,4 @@
 - [x] Uhrzeit statt Dauer im Modus `off` (Beleg: `tests/test_auto_mode.py`)
 - [x] Attribut `started_at` (Beleg: `tests/test_auto_mode.py`)
 - [x] README, Version 0.1.9 (Beleg: Durchsicht im Review, Version in `manifest.json` laut `.claude/verify.md`)
-- [ ] Review, `mother`, `ripley` (Beleg: Ablauf laut `openspec/config.yaml`)
+- [x] Review, `mother`, `ripley` (Beleg: Ablauf laut `openspec/config.yaml`)

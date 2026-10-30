@@ -18,6 +18,9 @@
   `_start_auto`: Ein Neustart behält damit jeden Plan. Geht das Gerät an, während Home Assistant aus ist, läuft ein alter Plan einmal
   leer und führt die Einschalt-Aktion aus. Das ist hinnehmbar und seltener als ein verlorener Plan.
 - **D9 Scheitert das Einschalten,** plant der Modus `on` neu, sonst bliebe das Gerät ohne Übergang nach `off` ohne Rückweg.
+- **D10 Grenze:** Meldet die Einschalt-Aktion Erfolg und das Gerät bleibt trotzdem aus, gibt es keinen neuen Plan, weil
+  kein Zustandswechsel kommt. Eine Nachprüfung braucht eine Wartezeit je Gerät; das bleibt draußen, bis es jemand braucht.
+  Ein nicht erreichbares Gerät ist kein solcher Fall: Der Plan bleibt fällig und läuft, sobald es zurück ist.
 - **D7 Geänderte Optionen** wirken ab dem nächsten Schaltvorgang. Einzige Ausnahme: Wird ein ausgeschaltetes Gerät auf
   `on` gestellt, plant es sofort, sonst bliebe es bis zum nächsten Umschalten aus. Der Controller merkt sich dafür den
   letzten Modus: Jede andere Änderung darf einen verworfenen Plan nicht zurückholen.

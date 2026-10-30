@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from datetime import time, timedelta
+import json
+from pathlib import Path
+from typing import Any
 
 from freezegun.api import FrozenDateTimeFactory
 import pytest
@@ -21,6 +24,7 @@ from custom_components.run_timer.const import (
 from custom_components.run_timer.controller import resolve_at
 
 from .conftest import FAN, add_entry, advance, call, dt_state, eid, local, off_time, switch
+from .test_restore import ENTRY_ID, stored
 
 pytestmark = pytest.mark.usefixtures("base")
 
@@ -206,7 +210,9 @@ async def test_at_time_plan_end_next_day(hass: HomeAssistant, freezer: FrozenDat
     """Das Planende zählt ab der Planzeit, nicht ab jetzt."""
     entry = await add_entry(hass, at_time="18:00:00")
     await call(hass, "on_at", at="19:00:00")
-    await advance(hass, freezer, timedelta(hours=7))
+    await advance(hass, freezer, timedelta(hours=6))
+    assert on_time(hass, entry) == local("2026-10-15 19:00"), "18:00 liegt vor der Planzeit, der Plan bleibt"
+    await advance(hass, freezer, timedelta(hours=1))
     assert hass.states.get(FAN).state == "on"
     assert off_time(hass, entry) == local("2026-10-16 18:00")
 
@@ -283,7 +289,109 @@ async def test_options_off_entity_to_mode_on_plans(hass: HomeAssistant) -> None:
 
 async def test_options_keep_cancelled_plan_cancelled(hass: HomeAssistant) -> None:
     """Nur der Wechsel auf on plant: eine andere Änderung holt einen verworfenen Plan nicht zurück."""
-    entry = await add_entry(hass, minutes=60, mode="on")
+    entry = await add_entry(hass)
+    await options(hass, entry, **{CONF_MODE: "on"})
     await call(hass, "cancel", what="on")
     await options(hass, entry, **{CONF_MODE: "on", CONF_DEFAULT_MINUTES: 90})
     assert on_time(hass, entry) is None
+
+
+async def test_options_mode_back_and_forth_plans_again(hass: HomeAssistant) -> None:
+    entry = await add_entry(hass, mode="on")
+    await call(hass, "cancel", what="on")
+    await options(hass, entry, **{CONF_MODE: "off"})
+    await options(hass, entry, **{CONF_MODE: "on"})
+    assert on_time(hass, entry) == local("2026-10-15 13:00")
+
+
+async def test_options_running_entity_to_mode_on_plans_nothing(hass: HomeAssistant) -> None:
+    await switch(hass, True)
+    entry = await add_entry(hass)
+    await options(hass, entry, **{CONF_MODE: "on"})
+    assert on_time(hass, entry) is None
+
+
+async def test_options_form_shows_stored_values(hass: HomeAssistant) -> None:
+    """Speichern ohne Änderung darf Modus und Uhrzeit nicht verlieren."""
+    entry = await add_entry(hass, mode="on", at_time="04:00:00")
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    shown = {str(k): (k.description or {}).get("suggested_value") for k in result["data_schema"].schema}
+    assert shown[CONF_MODE] == "on"
+    assert shown[CONF_AT_TIME] == "04:00:00"
+    selector = next(v for k, v in result["data_schema"].schema.items() if str(k) == CONF_MODE)
+    assert selector.config["translation_key"] == CONF_MODE
+
+
+@pytest.mark.parametrize("lang", ["en", "de"])
+def test_options_translated(lang: str) -> None:
+    path = Path(__file__).parents[1] / f"custom_components/run_timer/translations/{lang}.json"
+    text = json.loads(path.read_text(encoding="utf-8"))
+    assert {CONF_MODE, CONF_AT_TIME} <= text["options"]["step"]["init"]["data"].keys()
+    assert text["selector"][CONF_MODE]["options"].keys() == {"off", "on"}
+
+
+async def test_mode_on_unavailable_at_start_then_off_plans(hass: HomeAssistant) -> None:
+    hass.states.async_set(FAN, "unavailable")
+    entry = await add_entry(hass, minutes=60, mode="on")
+    hass.states.async_set(FAN, "off")
+    await hass.async_block_till_done()
+    assert on_time(hass, entry) == local("2026-10-15 13:00")
+
+
+async def test_mode_on_off_via_unavailable_plans(hass: HomeAssistant) -> None:
+    """Von an über unavailable auf aus ist ein echtes Ausschalten."""
+    await switch(hass, True)
+    entry = await add_entry(hass, minutes=60, mode="on")
+    attrs = hass.states.get(FAN).attributes
+    hass.states.async_set(FAN, "unavailable", attrs)
+    await hass.async_block_till_done()
+    hass.states.async_set(FAN, "off", attrs)
+    await hass.async_block_till_done()
+    assert on_time(hass, entry) == local("2026-10-15 13:00")
+
+
+async def test_mode_on_unreachable_restart_keeps_plan(hass: HomeAssistant, hass_storage: dict[str, Any]) -> None:
+    """Nach einem Neustart ist der letzte Zustand unbekannt: das erste „an“ ist kein Einschalten von Hand."""
+    hass.states.async_set(FAN, "unavailable")
+    stored(hass_storage, on_at=local("2026-10-15 12:30"))
+    entry = await add_entry(hass, minutes=60, mode="on", entry_id=ENTRY_ID)
+    hass.states.async_set(FAN, "on")
+    await hass.async_block_till_done()
+    assert on_time(hass, entry) == local("2026-10-15 12:30")
+
+
+async def test_mode_on_plan_without_duration_stays(hass: HomeAssistant) -> None:
+    await switch(hass, True)
+    entry = await add_entry(hass, minutes=60, mode="on")
+    await call(hass, "on_in", minutes=10)
+    await switch(hass, False)
+    assert on_time(hass, entry) == local("2026-10-15 12:10")
+
+
+async def test_mode_on_running_entity_gets_no_plan(hass: HomeAssistant) -> None:
+    await switch(hass, True)
+    entry = await add_entry(hass, minutes=60, mode="on")
+    assert on_time(hass, entry) is None
+
+
+async def test_mode_on_by_hand_drops_plan_with_duration(hass: HomeAssistant) -> None:
+    entry = await add_entry(hass, minutes=60, mode="on")
+    await call(hass, "cancel", what="on")
+    await call(hass, "on_in", minutes=10, duration=20)
+    await switch(hass, True)
+    assert on_time(hass, entry) is None
+
+
+async def test_at_time_later_fixed_off_ends_plan(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    entry = await add_entry(hass, at_time="18:00:00")
+    await call(hass, "off_at", at="20:00:00")
+    await call(hass, "on_in", minutes=60)
+    await advance(hass, freezer, timedelta(minutes=60))
+    assert off_time(hass, entry) == local("2026-10-15 20:00")
+
+
+async def test_at_time_own_duration_wins(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    entry = await add_entry(hass, at_time="18:00:00")
+    await call(hass, "on_in", minutes=10, duration=20)
+    await advance(hass, freezer, timedelta(minutes=10))
+    assert off_time(hass, entry) == local("2026-10-15 12:30")

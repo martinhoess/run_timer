@@ -19,7 +19,7 @@ Das System SHALL je Gerät höchstens ein geplantes Einschalten führen. Die Die
 - **Beleg:** pytest `tests/test_scheduled_on.py`
 
 ### Requirement: Ausführen des Plans
-Das System SHALL zur geplanten Zeit die Einschalt-Aktion ausführen, die Ausschaltzeit auf das Planende setzen und „ein um“ leeren. Planende ist Planzeit + Dauer; hat der Plan keine eigene Dauer und liegt ein gesetztes „aus um“ nach der Planzeit, ist es „aus um“, das dann stehen bleibt, sonst Planzeit + Standarddauer; bei Standarddauer 0 hat ein solcher Plan kein Ende und lässt eine schon laufende Ausschaltzeit stehen. Der Plan SHALL Vorrang vor einem laufenden Timer haben; ein Plan mit eigener Dauer auch vor „aus um“, das dabei geleert wird. Das Einschalten durch den Plan SHALL NOT zusätzlich die Standarddauer starten.
+Das System SHALL zur geplanten Zeit die Einschalt-Aktion ausführen, die Ausschaltzeit auf das Planende setzen und „ein um“ leeren. Planende ist Planzeit + Dauer; hat der Plan keine eigene Dauer und liegt ein gesetztes „aus um“ nach der Planzeit, ist es „aus um“, das dann stehen bleibt, sonst das nächste Vorkommen der Uhrzeit nach der Planzeit, falls gesetzt, sonst Planzeit + Standarddauer (im Modus `on` keins von beiden); bei Standarddauer 0 hat ein solcher Plan kein Ende und lässt eine schon laufende Ausschaltzeit stehen. Der Plan SHALL Vorrang vor einem laufenden Timer haben; ein Plan mit eigener Dauer auch vor „aus um“, das dabei geleert wird. Das Einschalten durch den Plan SHALL NOT zusätzlich die Standarddauer starten.
 
 #### Scenario: Plan mit Dauer
 - **WHEN** „ein um“ 06:00 mit Dauer 90 min fällig wird und das Gerät aus ist
@@ -55,7 +55,7 @@ Das System SHALL die Ausschaltzeit eines Plans verwerfen, wenn die Einschalt-Akt
 - **Beleg:** pytest `tests/test_scheduled_on.py`
 
 ### Requirement: Plan bleibt bei Hand-Aus
-Das System SHALL ein geplantes Einschalten erhalten, wenn das Gerät vorher von Hand ein- oder ausgeschaltet wird.
+Das System SHALL ein geplantes Einschalten erhalten, wenn das Gerät vorher von Hand ein- oder ausgeschaltet wird; im Modus `on` leert Einschalten von Hand den Plan.
 
 #### Scenario: Ausgeschaltet vor dem Plan
 - **WHEN** „ein um“ auf 06:00 steht und das Gerät um 23:00 von Hand ausgeschaltet wird
@@ -79,3 +79,49 @@ Das System SHALL ein geplantes Einschalten über einen Neustart erhalten. War es
 - **WHEN** „ein in 1 min für 30 min“ fällig wird, das Gerät aber bis über Planzeit + Dauer hinaus nicht erreichbar ist (auch beim Start von Home Assistant)
 - **THEN** verfällt der Plan zu diesem Zeitpunkt: „ein um“ und Einschaltzeit sind `unknown`, und meldet sich das Gerät danach zurück, wird nicht eingeschaltet
 - **Beleg:** pytest `tests/test_restore.py` (`test_unreachable_plan_expires_at_end`, `test_expired_plan_dropped_at_start_while_unreachable`, `test_due_plan_at_start_waits_until_end`, `test_default_change_moves_plan_end`)
+
+### Requirement: Modus on plant das Einschalten
+Im Modus `on` SHALL das Ausschalten ein Einschalten ohne eigene Dauer planen: zum nächsten Vorkommen der Uhrzeit, ohne Uhrzeit nach der Standarddauer, bei Standarddauer 0 ohne Uhrzeit gar nicht. Ein vorhandener Plan MUST bestehen bleiben.
+
+#### Scenario: Wieder an nach der Standarddauer
+- **WHEN** das Gerät um 12:00 ausgeschaltet wird (Modus `on`, Standarddauer 60)
+- **THEN** ist es um 13:00 wieder an und bleibt an
+- **Beleg:** pytest `tests/test_auto_mode.py`
+
+#### Scenario: Wieder an zur Uhrzeit
+- **WHEN** das Gerät um 12:00 ausgeschaltet wird (Modus `on`, Uhrzeit 04:00)
+- **THEN** steht „ein um“ auf 04:00 des Folgetags
+- **Beleg:** pytest `tests/test_auto_mode.py`
+
+### Requirement: Plan im Modus on
+Ein Plan ohne eigene Dauer SHALL im Modus `on` nur an einem späteren „aus um“ enden, sonst bleibt das Gerät danach an. Einschalten von Hand SHALL den Plan leeren, ein Neustart nicht. Scheitert das Einschalten, SHALL ein neuer Plan entstehen.
+
+#### Scenario: Von Hand früher eingeschaltet
+- **WHEN** das Gerät vor der Planzeit von Hand eingeschaltet wird
+- **THEN** ist „ein um“ `unknown`
+- **Beleg:** pytest `tests/test_auto_mode.py`
+
+#### Scenario: Plan von Hand bleibt
+- **WHEN** ein Plan in 10 min für 20 min steht und das Gerät ausgeschaltet wird
+- **THEN** bleibt der Plan und das Gerät geht nach 20 min Laufzeit aus
+- **Beleg:** pytest `tests/test_auto_mode.py`
+
+#### Scenario: Verworfener Plan bleibt verworfen
+- **WHEN** der Plan per `cancel` verworfen wird und das Gerät über `unavailable` auf `off` zurückkommt
+- **THEN** entsteht kein neuer Plan
+- **Beleg:** pytest `tests/test_auto_mode.py`
+
+#### Scenario: Einschalten scheitert
+- **WHEN** die Einschalt-Aktion zur Planzeit fehlschlägt
+- **THEN** steht ein neuer Plan, das Gerät bleibt nicht ohne Rückweg aus
+- **Beleg:** pytest `tests/test_auto_mode.py`
+
+#### Scenario: Neustart bei laufendem Gerät
+- **WHEN** das Gerät läuft, ein Plan steht und Home Assistant neu startet
+- **THEN** bleibt der Plan
+- **Beleg:** pytest `tests/test_auto_mode.py`
+
+#### Scenario: Ausgeschaltet während Home Assistant aus war
+- **WHEN** das Gerät beim Start aus ist und kein Plan steht
+- **THEN** steht danach ein Plan
+- **Beleg:** pytest `tests/test_auto_mode.py`
