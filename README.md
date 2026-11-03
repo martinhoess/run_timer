@@ -91,7 +91,8 @@ English and German.
 
 ## Services
 
-All services take `entity_id` of the **managed** entity, e.g. the fan itself.
+All services take `entity_id` of the **managed** entity, e.g. the fan itself, in `data` or
+`target`; a list switches several managed entities at once.
 
 | Service | Fields | Effect |
 |---|---|---|

@@ -24,7 +24,7 @@ Das System SHALL je verwaltetem Gerät einen eigenen Config-Eintrag anlegen. Zie
 - **Beleg:** pytest `tests/test_config_flow.py`
 
 ### Requirement: Standarddauer
-Das System SHALL je Gerät eine Standarddauer in Minuten führen, von 0 bis 1440; 0 bedeutet kein automatisches Ausschalten, Pläne, „aus um“ und die Dienste wirken trotzdem. Sie ist als `number`-Entität les- und schreibbar. Eine Änderung gilt ab dem nächsten Start eines Aus-Timers; ein laufender Timer bleibt unverändert.
+Das System SHALL je Gerät eine Standarddauer in Minuten führen, von 0 bis 1440; 0 bedeutet ohne Uhrzeit kein automatisches Ausschalten, Pläne, „aus um“ und die Dienste wirken trotzdem. Ist eine Uhrzeit gesetzt, gilt sie statt der Standarddauer; im Modus `on` ist die Standarddauer die Zeit bis zum Wiedereinschalten, und ein Plan ohne Dauer hat dort ohne späteres „aus um“ kein Ende (siehe „Modus und Uhrzeit“). Sie ist als `number`-Entität les- und schreibbar. Eine Änderung gilt ab dem nächsten Start eines Aus-Timers; ein laufender Timer bleibt unverändert.
 
 #### Scenario: Standarddauer ändern
 - **WHEN** der Nutzer die `number`-Entität von 240 auf 120 setzt, während ein Timer läuft
@@ -37,7 +37,7 @@ Das System SHALL je Gerät eine Standarddauer in Minuten führen, von 0 bis 1440
 - **Beleg:** pytest `tests/test_entities.py`
 
 #### Scenario: Standarddauer 0
-- **WHEN** die Standarddauer 0 ist und das Gerät eingeschaltet wird
+- **WHEN** die Standarddauer 0 ist, keine Uhrzeit gesetzt ist und das Gerät im Modus `off` eingeschaltet wird
 - **THEN** startet kein Timer und das Gerät bleibt an, bis es ausgeschaltet wird; ein gesetztes „aus um“ gilt weiter
 - **Beleg:** pytest `tests/test_off_timer.py` (`test_default_zero_switch_on_starts_no_timer`, `test_default_zero_fixed_off_still_applies`)
 
@@ -90,6 +90,34 @@ Das System SHALL einer umbenannten Ziel-Entität folgen: Timer, Pläne und Diens
 - **THEN** startet das Einschalten unter der neuen ID den Timer, und Dienste mit der neuen ID wirken
 - **Beleg:** pytest `tests/test_off_timer.py`
 
+### Requirement: Ziel der Dienste
+Die Dienste SHALL `entity_id` der verwalteten Entität in `data` oder `target` annehmen, als einzelnen Wert oder als Liste. Doppelte Einträge SHALL einmal zählen. Ist eine Entität der Liste nicht verwaltet, SHALL der Aufruf mit einer Fehlermeldung scheitern, bevor ein Gerät geändert wird. Scheitert der Dienst an einem einzelnen Gerät, SHALL er die übrigen trotzdem ausführen und den ersten Fehler danach melden.
+
+#### Scenario: Aufruf mit target
+- **WHEN** `off_in` mit 30 min über `target: {entity_id: [<verwaltete Entität>]}` aufgerufen wird
+- **THEN** ist deren Ausschaltzeit jetzt + 30 min
+- **Beleg:** pytest `tests/test_services.py` (`test_service_with_target`)
+
+#### Scenario: Zwei verwaltete Entitäten
+- **WHEN** `off_in` mit 30 min für zwei verwaltete, eingeschaltete Entitäten aufgerufen wird
+- **THEN** ist bei beiden die Ausschaltzeit jetzt + 30 min
+- **Beleg:** pytest `tests/test_services.py` (`test_service_with_two_entities`)
+
+#### Scenario: Doppelte Entität
+- **WHEN** `extend` mit 15 für dieselbe Entität zweimal in der Liste aufgerufen wird
+- **THEN** verschiebt sich die Ausschaltzeit um 15 min, nicht um 30
+- **Beleg:** pytest `tests/test_services.py` (`test_service_duplicates_count_once`)
+
+#### Scenario: Unverwaltete Entität in der Liste
+- **WHEN** die Liste eine verwaltete und eine nicht verwaltete Entität enthält
+- **THEN** scheitert der Aufruf mit einer Fehlermeldung, und an der verwalteten Entität ändert sich nichts
+- **Beleg:** pytest `tests/test_services.py` (`test_service_unmanaged_in_list_changes_nothing`)
+
+#### Scenario: Ein Gerät scheitert
+- **WHEN** `extend` mit 15 für ein nicht erreichbares Gerät ohne Timer und danach für ein laufendes Gerät aufgerufen wird
+- **THEN** ist die Ausschaltzeit des laufenden Geräts um 15 min verschoben, und der Aufruf meldet danach den Fehler des ersten
+- **Beleg:** pytest `tests/test_services.py` (`test_service_error_does_not_skip_others`)
+
 ### Requirement: Eintrag entfernen
 Das System SHALL beim Entfernen eines Config-Eintrags alle Timer und Pläne dieses Geräts verwerfen, ohne das Gerät zu schalten.
 
@@ -99,7 +127,7 @@ Das System SHALL beim Entfernen eines Config-Eintrags alle Timer und Pläne dies
 - **Beleg:** pytest `tests/test_off_timer.py`
 
 ### Requirement: Haltebedingung in den Optionen
-Das System SHALL in den Optionen je Gerät ein optionales Template „Halten, solange“ und einen Nachlauf in Minuten (0–1440, Vorgabe 15) anbieten. Ein Template mit Syntaxfehler und Text ohne Template-Syntax SHALL der Optionsdialog ablehnen. Eine Änderung SHALL ohne Neustart gelten: ab dem nächsten Einschalten, bei einem Lauf, der schon einer Bedingung folgt, sofort.
+Das System SHALL in den Optionen je Gerät ein optionales Template „Halten, solange“ und einen Nachlauf in Minuten (0–1440, Vorgabe 15) anbieten. Ein Template mit Syntaxfehler und Text ohne Template-Syntax SHALL der Optionsdialog ablehnen. Eine Änderung SHALL ohne Neustart gelten: ab dem nächsten Einschalten, bei einem Lauf, der schon einer Bedingung folgt, sofort. Wird das Template geleert, während es ein Gerät hält, SHALL der Nachlauf beginnen wie bei einer falschen Bedingung.
 
 #### Scenario: Haltebedingung setzen
 - **WHEN** der Nutzer in den Optionen ein Template und einen Nachlauf von 10 min speichert
@@ -120,6 +148,11 @@ Das System SHALL in den Optionen je Gerät ein optionales Template „Halten, so
 - **WHEN** ein Gerät gehalten wird und der Nutzer ein Template speichert, das gerade falsch ist
 - **THEN** beginnt sofort der Nachlauf
 - **Beleg:** pytest `tests/test_hold.py` (`test_options_change_while_held_applies_now`)
+
+#### Scenario: Bedingung leeren, während sie hält
+- **WHEN** ein Gerät gehalten wird und der Nutzer das Template „Halten, solange“ leert (Nachlauf 15 min)
+- **THEN** ist die Ausschaltzeit jetzt + 15 min und `held` falsch
+- **Beleg:** pytest `tests/test_hold.py` (`test_options_clear_while_held_starts_grace`)
 
 ### Requirement: Modus und Uhrzeit
 Die Optionen eines Geräts SHALL den Modus `off` (Vorgabe) oder `on` und eine optionale Uhrzeit anbieten. Bestehende Einträge ohne diese Optionen MUST sich wie `off` ohne Uhrzeit verhalten. Eine geänderte Option SHALL ab dem nächsten Schaltvorgang gelten; wird ein ausgeschaltetes Gerät auf `on` gestellt, plant es sofort.

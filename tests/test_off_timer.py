@@ -190,6 +190,32 @@ async def test_failed_switch_off_is_retried(
     assert off_time(hass, entry) is None
 
 
+
+async def test_failed_switch_off_timeout_is_retried(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """Ausschalten wirft TimeoutError statt HomeAssistantError: auch dann neuer Versuch."""
+    attempts: list[str] = []
+
+    async def turn_off(call: ServiceCall) -> None:
+        attempts.append("x")
+        if len(attempts) == 1:
+            raise TimeoutError
+        hass.states.async_set("switch.plug", "off")
+
+    hass.states.async_set("switch.plug", "off")
+    hass.services.async_register("switch", "turn_off", turn_off)
+    hass.services.async_register("switch", "turn_on", lambda call: None)
+    entry = await add_entry(hass, entity_id="switch.plug", minutes=10)
+    hass.states.async_set("switch.plug", "on")
+    await advance(hass, freezer, timedelta(minutes=10))
+    assert attempts == ["x"]
+    assert hass.states.get("switch.plug").state == "on"
+    await advance(hass, freezer, timedelta(minutes=5))
+    assert len(attempts) == 2
+    assert hass.states.get("switch.plug").state == "off"
+    assert off_time(hass, entry) is None
+
 async def test_renamed_entity_is_followed(hass: HomeAssistant) -> None:
     """Umbenannte Ziel-Entität: Timer und Dienste folgen der neuen entity_id."""
     entry = await add_entry(hass)

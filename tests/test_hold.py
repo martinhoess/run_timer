@@ -382,6 +382,18 @@ async def test_options_change_while_held_applies_now(hass: HomeAssistant) -> Non
     assert off_time(hass, entry) == local("2026-10-15 12:15")
 
 
+async def test_options_clear_while_held_starts_grace(hass: HomeAssistant) -> None:
+    """Bedingung leeren, während sie hält: es beginnt der Nachlauf, wie bei falscher Bedingung."""
+    await room(hass, True)
+    entry = await add_entry(hass, hold=IN_ROOM)
+    await switch(hass, True)
+    assert held(hass, entry)
+    hass.config_entries.async_update_entry(entry, options={**entry.options, "hold_template": ""})
+    await hass.async_block_till_done()
+    assert off_time(hass, entry) == local("2026-10-15 12:15")
+    assert not held(hass, entry)
+
+
 @pytest.mark.parametrize("stored_off", ["2026-10-15 11:58", "2026-10-15 12:10"])
 async def test_restart_unreachable_grace_dropped_when_true(
     hass: HomeAssistant, hass_storage: dict[str, Any], stored_off: str

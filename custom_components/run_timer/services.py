@@ -25,7 +25,8 @@ from .const import (
 )
 from .controller import RunTimerController
 
-_ENTITY = {vol.Required(ATTR_ENTITY_ID): cv.entity_id}
+# entity_ids: `target: {entity_id: …}` arrives as a list.
+_ENTITY = {vol.Required(ATTR_ENTITY_ID): cv.entity_ids}
 _POSITIVE = vol.All(vol.Coerce(int), vol.Range(min=1))
 _AT = vol.Any(cv.datetime, cv.time)
 _DURATION = vol.All(vol.Coerce(int), vol.Range(min=1, max=DEFAULT_MINUTES_MAX))
@@ -64,7 +65,22 @@ def _controller(hass: HomeAssistant, entity_id: str) -> RunTimerController:
 
 
 async def _async_handle(call: ServiceCall) -> None:
-    controller = _controller(call.hass, call.data[ATTR_ENTITY_ID])
+    # An unmanaged entity fails the call before anything switches; duplicates count once.
+    controllers = [
+        _controller(call.hass, entity_id) for entity_id in dict.fromkeys(call.data[ATTR_ENTITY_ID])
+    ]
+    # One device failing must not skip the others: run all, then raise the first error.
+    first_error: Exception | None = None
+    for controller in controllers:
+        try:
+            await _async_run(controller, call)
+        except Exception as err:  # noqa: BLE001 - re-raised after the loop
+            first_error = first_error or err
+    if first_error is not None:
+        raise first_error
+
+
+async def _async_run(controller: RunTimerController, call: ServiceCall) -> None:
     data = call.data
     match call.service:
         case "extend":

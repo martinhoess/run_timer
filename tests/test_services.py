@@ -10,6 +10,8 @@ import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
 
+from custom_components.run_timer.const import DOMAIN
+
 from .conftest import FAN, add_entry, advance, call, dt_state, local, off_time, switch
 
 pytestmark = pytest.mark.usefixtures("base")
@@ -198,3 +200,61 @@ async def test_extend_off_device_failed_switch_on_raises(hass: HomeAssistant) ->
     with pytest.raises(ServiceValidationError):
         await call(hass, "extend", minutes=15)
     assert off_time(hass, entry) is None
+
+
+async def test_service_with_target(hass: HomeAssistant) -> None:
+    """`target: {entity_id: …}` kommt als Liste an und wirkt wie `data`."""
+    entry = await add_entry(hass)
+    await switch(hass, True)
+    await hass.services.async_call(
+        DOMAIN, "off_in", {"minutes": 30}, blocking=True, target={"entity_id": [FAN]}
+    )
+    await hass.async_block_till_done()
+    assert off_time(hass, entry) == local("2026-10-15 12:30")
+
+
+async def plug_entry(hass: HomeAssistant, state: str) -> object:
+    """A second managed entity next to the fan."""
+    hass.states.async_set("switch.plug", state)
+    hass.services.async_register("switch", "turn_off", lambda call: None)
+    hass.services.async_register("switch", "turn_on", lambda call: None)
+    return await add_entry(hass, entity_id="switch.plug", minutes=60)
+
+
+async def test_service_with_two_entities(hass: HomeAssistant) -> None:
+    """Eine Liste mit zwei verwalteten Entitäten: beide ändern sich."""
+    fan = await add_entry(hass)
+    await switch(hass, True)
+    plug = await plug_entry(hass, "off")
+    hass.states.async_set("switch.plug", "on")
+    await hass.async_block_till_done()
+    await call(hass, "off_in", entity_id=[FAN, "switch.plug"], minutes=30)
+    assert off_time(hass, fan) == local("2026-10-15 12:30")
+    assert off_time(hass, plug) == local("2026-10-15 12:30")
+
+
+async def test_service_unmanaged_in_list_changes_nothing(hass: HomeAssistant) -> None:
+    """Verwaltet und unverwaltet gemischt: Fehler, bevor etwas schaltet."""
+    entry = await add_entry(hass)
+    await switch(hass, True)
+    with pytest.raises(ServiceValidationError):
+        await call(hass, "off_in", entity_id=[FAN, "switch.unmanaged"], minutes=30)
+    assert off_time(hass, entry) == local("2026-10-15 16:00")
+
+
+async def test_service_duplicates_count_once(hass: HomeAssistant) -> None:
+    """Doppelte Entität: extend 15 verlängert nur einmal."""
+    entry = await add_entry(hass)
+    await switch(hass, True)
+    await call(hass, "extend", entity_id=[FAN, FAN], minutes=15)
+    assert off_time(hass, entry) == local("2026-10-15 16:15")
+
+
+async def test_service_error_does_not_skip_others(hass: HomeAssistant) -> None:
+    """Die erste Entität scheitert, die zweite wird trotzdem ausgeführt, der Fehler kommt danach."""
+    fan = await add_entry(hass)
+    await switch(hass, True)
+    await plug_entry(hass, "unavailable")
+    with pytest.raises(ServiceValidationError):
+        await call(hass, "extend", entity_id=["switch.plug", FAN], minutes=15)
+    assert off_time(hass, fan) == local("2026-10-15 16:15")

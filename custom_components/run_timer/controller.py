@@ -7,8 +7,6 @@ from datetime import datetime, time, timedelta
 import logging
 from typing import Any
 
-import voluptuous as vol
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     ATTR_ENTITY_ID,
@@ -29,7 +27,6 @@ from homeassistant.core import (
     callback,
 )
 from homeassistant.exceptions import (
-    HomeAssistantError,
     ServiceValidationError,
     TemplateError,
 )
@@ -478,9 +475,10 @@ class RunTimerController:
                 {ATTR_ENTITY_ID: self.target},
                 blocking=True,
             )
-        except HomeAssistantError as err:
+        except Exception as err:  # any failure of the integration must lead to a retry
             _LOGGER.warning(
-                "Switching off %s failed, retrying in %s: %s", self.target, RETRY, err
+                "Switching off %s failed, retrying in %s: %r", self.target, RETRY, err,
+                exc_info=True,
             )
             self._schedule("retry", dt_util.utcnow() + RETRY, self._async_off_timer)
         # The state change to off clears the off time.
@@ -544,8 +542,8 @@ class RunTimerController:
             await self._script.async_run(
                 run_variables={"entity_id": self.target}, context=Context()
             )
-        except (HomeAssistantError, vol.Invalid) as err:
-            _LOGGER.warning("Switching on %s failed: %s", self.target, err)
+        except Exception as err:  # any failure must plan again in mode on
+            _LOGGER.warning("Switching on %s failed: %r", self.target, err, exc_info=True)
             return False
         return True
 

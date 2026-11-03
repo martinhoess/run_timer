@@ -10,7 +10,7 @@ from typing import Any
 from freezegun.api import FrozenDateTimeFactory
 import pytest
 
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.util import dt as dt_util
 
@@ -174,6 +174,22 @@ async def test_mode_on_failed_switch_on_plans_again(hass: HomeAssistant, freezer
     assert hass.states.get(FAN).state == "off"
     assert on_time(hass, entry) == local("2026-10-15 14:00")
 
+
+
+async def test_mode_on_switch_on_raising_plans_again(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    """Wirft der Einschaltdienst etwas anderes als HomeAssistantError, gibt es trotzdem einen neuen Plan."""
+
+    async def turn_on(call: ServiceCall) -> None:
+        raise TimeoutError
+
+    hass.states.async_set("switch.plug", "on")
+    hass.services.async_register("switch", "turn_on", turn_on)
+    entry = await add_entry(hass, entity_id="switch.plug", minutes=60, mode="on")
+    hass.states.async_set("switch.plug", "off")
+    await hass.async_block_till_done()
+    await advance(hass, freezer, timedelta(minutes=60))
+    assert hass.states.get("switch.plug").state == "off"
+    assert on_time(hass, entry) == local("2026-10-15 14:00")
 
 async def test_at_time_instead_of_default(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
     """Aus um 18:00."""

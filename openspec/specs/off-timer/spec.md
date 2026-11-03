@@ -19,7 +19,7 @@ Das System SHALL eine Ziel-Entität als „an“ werten, wenn ihr Zustand weder 
 - **Beleg:** pytest `tests/test_off_timer.py`
 
 ### Requirement: Aus-Timer beim Einschalten
-Das System SHALL eine Ausschaltzeit setzen, wenn die Ziel-Entität „an“ meldet und ihr letzter erreichbarer Zustand `off` war oder seit dem Start noch keiner bekannt ist, auch wenn dazwischen `unavailable` lag. Ist „aus um“ gesetzt und liegt in der Zukunft, gilt diese Zeit, sonst das nächste Vorkommen der Uhrzeit, falls gesetzt, sonst jetzt + Standarddauer; bei Standarddauer 0 startet dann kein Timer. Ist eine Haltebedingung gesetzt und wahr, startet ebenfalls kein Timer (siehe „Halten nach Bedingung“). War der letzte erreichbare Zustand schon „an“, startet nichts.
+Das System SHALL eine Ausschaltzeit setzen, wenn die Ziel-Entität „an“ meldet und ihr letzter erreichbarer Zustand `off` war oder seit dem Start noch keiner bekannt ist, auch wenn dazwischen `unavailable` lag. Ist „aus um“ gesetzt und liegt in der Zukunft, gilt diese Zeit, sonst das nächste Vorkommen der Uhrzeit, falls gesetzt, sonst jetzt + Standarddauer; bei Standarddauer 0 startet dann kein Timer. Ist eine Haltebedingung gesetzt und wahr, startet ebenfalls kein Timer (siehe „Halten nach Bedingung“). Im Modus `on` SHALL nur ein gesetztes „aus um“ in der Zukunft gelten; Uhrzeit, Standarddauer und Haltebedingung starten dort keinen Timer. War der letzte erreichbare Zustand schon „an“, startet nichts.
 
 #### Scenario: Einschalten am Gerät
 - **WHEN** der Ventilator mit Standarddauer 240 min um 20:00 am Gerät eingeschaltet wird
@@ -51,6 +51,11 @@ Das System SHALL eine Ausschaltzeit setzen, wenn die Ziel-Entität „an“ meld
 - **THEN** ist die Ausschaltzeit nach dem Start leer und nach dem Einschalten 16:30
 - **Beleg:** pytest `tests/test_restore.py`
 
+#### Scenario: Einschalten im Modus on
+- **WHEN** im Modus `on` (Standarddauer 60 min) das Gerät von Hand eingeschaltet wird, ohne bzw. mit „aus um“ 15:00, auch bei gesetzter und danach falscher Haltebedingung
+- **THEN** gibt es keine Ausschaltzeit und das Gerät bleibt an bzw. ist die Ausschaltzeit 15:00
+- **Beleg:** pytest `tests/test_auto_mode.py` (`test_mode_on_ignores_hold`, `test_mode_on_fixed_off_still_works`)
+
 ### Requirement: Ausschalten zur Ausschaltzeit
 Das System SHALL zur Ausschaltzeit `homeassistant.turn_off` auf die Ziel-Entität aufrufen und danach Ausschaltzeit und ein erreichtes „aus um“ leeren. Schlägt der Aufruf fehl, SHALL er alle 5 Minuten wiederholt werden, bis die Entität `off` meldet oder die Ausschaltzeit geändert wird.
 
@@ -60,9 +65,9 @@ Das System SHALL zur Ausschaltzeit `homeassistant.turn_off` auf die Ziel-Entitä
 - **Beleg:** pytest `tests/test_off_timer.py`
 
 #### Scenario: Ausschalten scheitert einmal
-- **WHEN** der Ausschaltbefehl zur Ausschaltzeit mit einem Fehler endet
+- **WHEN** der Ausschaltbefehl zur Ausschaltzeit mit einem Fehler endet, gleich welcher Art (z. B. `HomeAssistantError` oder `TimeoutError`)
 - **THEN** versucht run_timer es 5 Minuten später erneut
-- **Beleg:** pytest `tests/test_off_timer.py`
+- **Beleg:** pytest `tests/test_off_timer.py` (`test_failed_switch_off_is_retried`, `test_failed_switch_off_timeout_is_retried`)
 
 ### Requirement: Ausschalten von Hand
 Das System SHALL beim Wechsel der Ziel-Entität auf `off` die Ausschaltzeit leeren. „aus um“ und ein geplantes Einschalten SHALL erhalten bleiben.
@@ -83,7 +88,7 @@ Das System SHALL beim Wechsel der Ziel-Entität auf `off` die Ausschaltzeit leer
 - **Beleg:** pytest `tests/test_off_timer.py`
 
 ### Requirement: Restzeit verlängern und verkürzen
-Das System SHALL einen Dienst `extend` mit ganzzahligen Minuten (positiv oder negativ) anbieten, der die aktuelle Ausschaltzeit verschiebt; ist „aus um“ gesetzt, wird es mit verschoben. Läge die neue Ausschaltzeit nicht in der Zukunft, SHALL das Gerät sofort ausgeschaltet werden. Ohne laufende Ausschaltzeit SHALL ein eingeschaltetes Gerät ab jetzt zählen (positiv: aus in X, negativ: sofort aus) und ein ausgeschaltetes Gerät bei positiven Minuten für diese Dauer eingeschaltet werden, wie ein Plan mit eigener Dauer; negative Minuten tun dann nichts; „aus um“ wird dabei verbraucht (geleert), ein geplantes Einschalten bleibt gesetzt und endet ohne eigene Dauer dann nach der Standarddauer. Scheitert das Einschalten, SHALL der Dienst mit einer Fehlermeldung abbrechen. Ist das Gerät nicht erreichbar, SHALL der Dienst mit einer Fehlermeldung abbrechen.
+Das System SHALL einen Dienst `extend` mit ganzzahligen Minuten (positiv oder negativ) anbieten, der die aktuelle Ausschaltzeit verschiebt; ist „aus um“ gesetzt, wird es mit verschoben. Läge die neue Ausschaltzeit nicht in der Zukunft, SHALL das Gerät sofort ausgeschaltet werden. Ohne laufende Ausschaltzeit SHALL ein eingeschaltetes Gerät ab jetzt zählen (positiv: aus in X, negativ: sofort aus) und ein ausgeschaltetes Gerät bei positiven Minuten für diese Dauer eingeschaltet werden, wie ein Plan mit eigener Dauer; negative Minuten tun dann nichts; „aus um“ wird dabei verbraucht (geleert), ein geplantes Einschalten bleibt gesetzt und endet ohne eigene Dauer dann wie unter „Ausführen des Plans“ (scheduled-on): zur Uhrzeit, falls gesetzt, sonst nach der Standarddauer, im Modus `on` gar nicht. Scheitert das Einschalten, SHALL der Dienst mit einer Fehlermeldung abbrechen. Ist das Gerät nicht erreichbar, SHALL der Dienst mit einer Fehlermeldung abbrechen.
 
 #### Scenario: Viermal +15
 - **WHEN** um 20:00 eingeschaltet (Standarddauer 240 min) und danach viermal `extend` mit 15 aufgerufen wird
@@ -150,7 +155,7 @@ Das System SHALL eine fällige Ausschaltzeit nicht verwerfen, wenn die Ziel-Enti
 - **Beleg:** pytest `tests/test_off_timer.py`
 
 ### Requirement: Neustart von Home Assistant
-Das System SHALL Ausschaltzeit und „aus um“ über einen Neustart erhalten. Eine während des Neustarts verpasste Ausschaltzeit SHALL nach dem vollständigen Start ausgeführt werden. Ist das Gerät nach dem Start an oder meldet es erst später an, ohne Ausschaltzeit, SHALL der Aus-Timer wie beim Einschalten beginnen. Ein Lauf, der vor dem Neustart einer Haltebedingung folgte, SHALL ihr stattdessen weiter folgen (siehe „Halten nach Bedingung“). Die Wiederherstellung SHALL erst nach dem vollständigen Start von Home Assistant laufen.
+Das System SHALL Ausschaltzeit und „aus um“ über einen Neustart erhalten. Eine während des Neustarts verpasste Ausschaltzeit SHALL nach dem vollständigen Start ausgeführt werden. Ist das Gerät nach dem Start an oder meldet es erst später an, ohne Ausschaltzeit, SHALL der Aus-Timer nach „Aus-Timer beim Einschalten“ beginnen, im Modus `on` also nur mit „aus um“. Ein Lauf, der vor dem Neustart einer Haltebedingung folgte, SHALL ihr stattdessen weiter folgen (siehe „Halten nach Bedingung“). Die Wiederherstellung SHALL erst nach dem vollständigen Start von Home Assistant laufen.
 
 #### Scenario: Neustart mit laufendem Timer
 - **WHEN** die Ausschaltzeit 00:00 ist und Home Assistant von 22:00 bis 22:05 neu startet
