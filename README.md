@@ -71,8 +71,8 @@ English and German.
   round: switching off plans the switch-on, with the time of day or after the default run time, and the device then stays on.
   An existing plan stays, switching on by hand drops it, a failed switch-on plans again, the hold condition does not apply. A time of day counts instead
   of the default run time in both modes. Changed options apply from the next switching, except that an
-  entity that is off plans at once when set to mode `on`. After a restart an entity that is off gets a plan again,
-  even if the last one was cancelled.
+  entity that is off plans at once when set to mode `on`. After a restart an entity that is off gets a plan, unless
+  the last one was cancelled; a cancelled plan stays cancelled until the device has been on again.
 - Switching on starts the timer: the fixed switch-off time if one is set, otherwise now + default
   run time (none with default run time 0). This also applies when the device comes back on after being unavailable while it was
   off, e.g. a smart plug after a power cut.

@@ -109,6 +109,57 @@ async def test_mode_on_cancel_stays_cancelled(hass: HomeAssistant) -> None:
     assert on_time(hass, entry) is None
 
 
+async def test_mode_on_cancel_survives_restart(hass: HomeAssistant) -> None:
+    """Verworfener Plan bleibt über einen Neustart verworfen, bis das Gerät wieder an war."""
+    await switch(hass, True)
+    entry = await add_entry(hass, minutes=60, mode="on")
+    await switch(hass, False)
+    await call(hass, "cancel", what="on")
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert on_time(hass, entry) is None
+    await switch(hass, True)
+    await switch(hass, False)
+    assert on_time(hass, entry) is not None
+
+
+async def test_mode_on_cancel_while_on_keeps_way_back(hass: HomeAssistant) -> None:
+    """cancel bei laufendem Gerät: beim nächsten Ausschalten entsteht der Plan wie gewohnt."""
+    await switch(hass, True)
+    entry = await add_entry(hass, minutes=60, mode="on")
+    await call(hass, "cancel", what="all")
+    await switch(hass, False)
+    assert on_time(hass, entry) is not None
+
+
+async def test_mode_on_cancel_without_plan_keeps_way_back(hass: HomeAssistant) -> None:
+    """cancel ohne stehenden Plan verwirft nichts, auch wenn das Gerät gerade unavailable ist."""
+    await switch(hass, True)
+    entry = await add_entry(hass, minutes=60, mode="on")
+    attrs = hass.states.get(FAN).attributes
+    hass.states.async_set(FAN, "unavailable", attrs)
+    await hass.async_block_till_done()
+    await call(hass, "cancel", what="all")
+    hass.states.async_set(FAN, "off", attrs)
+    await hass.async_block_till_done()
+    assert on_time(hass, entry) is not None
+
+
+async def test_mode_on_dismissed_cleared_in_store(
+    hass: HomeAssistant, hass_storage: dict[str, Any], freezer: FrozenDateTimeFactory
+) -> None:
+    """Einschalten löscht den Merker auch im Store, nicht nur im Speicher."""
+    await switch(hass, True)
+    entry = await add_entry(hass, minutes=60, mode="on")
+    await switch(hass, False)
+    await call(hass, "cancel", what="on")
+    await advance(hass, freezer, timedelta(seconds=5))
+    assert hass_storage[f"run_timer.{entry.entry_id}"]["data"]["on_dismissed"] is True
+    await switch(hass, True)
+    await advance(hass, freezer, timedelta(seconds=5))
+    assert hass_storage[f"run_timer.{entry.entry_id}"]["data"]["on_dismissed"] is False
+
+
 async def test_mode_on_switched_off_while_down(hass: HomeAssistant) -> None:
     """Beim Start aus und kein Plan: danach steht einer."""
     entry = await add_entry(hass, minutes=60, mode="on")
@@ -174,6 +225,19 @@ async def test_mode_on_failed_switch_on_plans_again(hass: HomeAssistant, freezer
     assert hass.states.get(FAN).state == "off"
     assert on_time(hass, entry) == local("2026-10-15 14:00")
 
+
+async def test_mode_on_new_plan_after_cancel_plans_again_on_failure(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """Nach cancel ein neuer Plan von Hand: scheitert er, entsteht trotzdem ein Rückweg."""
+    await switch(hass, True)
+    entry = await add_entry(hass, minutes=60, mode="on", on_action=[{"action": "script.does_not_exist"}])
+    await switch(hass, False)
+    await call(hass, "cancel", what="on")
+    await call(hass, "on_in", minutes=10)
+    await advance(hass, freezer, timedelta(minutes=10))
+    assert hass.states.get(FAN).state == "off"
+    assert on_time(hass, entry) == local("2026-10-15 13:10")
 
 
 async def test_mode_on_switch_on_raising_plans_again(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:

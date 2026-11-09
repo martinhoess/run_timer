@@ -133,6 +133,8 @@ class RunTimerController:
         self._hold_true = False
         self._hold_unsub: CALLBACK_TYPE | None = None
         self._started = False
+        # Mode on: the way back was cancelled; no new plan until the entity is on again.
+        self._on_dismissed = False
 
     # ----- lifecycle ---------------------------------------------------
 
@@ -166,6 +168,7 @@ class RunTimerController:
         self.on_minutes = data.get("on_minutes")
         self._hold_run = bool(data.get("hold_run"))
         self._hold_applied = bool(data.get("hold_applied"))
+        self._on_dismissed = bool(data.get("on_dismissed"))
         self._unsubs.append(async_at_started(self.hass, self._async_started))
 
     async def async_unload(self) -> None:
@@ -217,6 +220,8 @@ class RunTimerController:
                 # Due, entity unreachable: wait, but not past the plan's end.
                 self._reschedule_plan()
         state = self.hass.states.get(self.target)
+        if is_on(state):
+            self._on_dismissed = False
         if state is not None and state.state == STATE_OFF:
             self._hold_run = False
             self._plan_auto_on(now)
@@ -250,6 +255,7 @@ class RunTimerController:
             self.hass.async_create_task(self._async_follow_hold())
             state = self.hass.states.get(self.target)
             if self._last_mode != MODE_ON and state is not None and state.state == STATE_OFF:
+                self._on_dismissed = False
                 self._plan_auto_on(dt_util.utcnow())
         self._last_mode = self.mode
         self._changed()
@@ -263,6 +269,7 @@ class RunTimerController:
             "on_minutes": self.on_minutes,
             "hold_run": self._hold_run,
             "hold_applied": self._hold_applied,
+            "on_dismissed": self._on_dismissed,
         }
 
     @callback
@@ -336,7 +343,12 @@ class RunTimerController:
     @callback
     def _plan_auto_on(self, now: datetime) -> None:
         """Mode on: the entity went off, plan its way back. A plan already set stays."""
-        if self.mode == MODE_ON and self.on_at is None and (when := self._auto_time(now)):
+        if (
+            self.mode == MODE_ON
+            and self.on_at is None
+            and not self._on_dismissed
+            and (when := self._auto_time(now))
+        ):
             self._set_on(when, None)
             self._changed()
 
@@ -577,6 +589,9 @@ class RunTimerController:
             return
         if not is_on(new):
             return
+        if self._on_dismissed:
+            self._on_dismissed = False
+            self._changed()  # Later branches may return without saving.
         if previous is None and self._hold_run:
             # First state after a restart of a held run: follow the condition, as the
             # catch-up does for a reachable entity; a stored grace time may be void.
@@ -684,6 +699,7 @@ class RunTimerController:
         """Plan a switch-on."""
         when = resolve_at(at, dt_util.utcnow())
         self._require_future(when)
+        self._on_dismissed = False  # A new plan replaces the cancelled one.
         self._set_on(when, minutes)
         self._changed()
 
@@ -700,6 +716,10 @@ class RunTimerController:
             self._set_off_at(None)
             self._set_fixed(None)
         if what in ("on", "all"):
+            if self.on_at is not None and self.mode == MODE_ON and not is_on(
+                self.hass.states.get(self.target)
+            ):
+                self._on_dismissed = True
             self._set_on(None, None)
         self._changed()
 

@@ -94,7 +94,7 @@ Im Modus `on` SHALL das Ausschalten ein Einschalten ohne eigene Dauer planen: zu
 - **Beleg:** pytest `tests/test_auto_mode.py`
 
 ### Requirement: Plan im Modus on
-Ein Plan ohne eigene Dauer SHALL im Modus `on` nur an einem späteren „aus um“ enden, sonst bleibt das Gerät danach an. Einschalten von Hand SHALL den Plan leeren, ein Neustart nicht. Scheitert das Einschalten, SHALL ein neuer Plan entstehen.
+Ein Plan ohne eigene Dauer SHALL im Modus `on` nur an einem späteren „aus um“ enden, sonst bleibt das Gerät danach an. Einschalten von Hand SHALL den Plan leeren, ein Neustart nicht. Ein per `cancel` verworfener Plan SHALL bis zum nächsten Einschalten verworfen bleiben, auch über einen Neustart. Scheitert das Einschalten, SHALL ein neuer Plan entstehen.
 
 #### Scenario: Von Hand früher eingeschaltet
 - **WHEN** das Gerät vor der Planzeit von Hand eingeschaltet wird
@@ -111,6 +111,11 @@ Ein Plan ohne eigene Dauer SHALL im Modus `on` nur an einem späteren „aus um�
 - **THEN** entsteht kein neuer Plan
 - **Beleg:** pytest `tests/test_auto_mode.py`
 
+#### Scenario: Verworfener Plan übersteht einen Neustart
+- **WHEN** der Plan eines ausgeschalteten Geräts per `cancel` verworfen wird und Home Assistant oder der Eintrag neu startet
+- **THEN** entsteht kein neuer Plan, bis das Gerät wieder an war; das nächste Ausschalten danach plant wie gewohnt
+- **Beleg:** pytest `tests/test_auto_mode.py` (`test_mode_on_cancel_survives_restart`, `test_mode_on_cancel_while_on_keeps_way_back`, `test_mode_on_cancel_without_plan_keeps_way_back`, `test_mode_on_dismissed_cleared_in_store`, `test_mode_on_new_plan_after_cancel_plans_again_on_failure`)
+
 #### Scenario: Einschalten scheitert
 - **WHEN** die Einschalt-Aktion zur Planzeit fehlschlägt
 - **THEN** steht ein neuer Plan, das Gerät bleibt nicht ohne Rückweg aus, auch wenn der Einschaltdienst eine andere Ausnahme als `HomeAssistantError` wirft
@@ -122,6 +127,6 @@ Ein Plan ohne eigene Dauer SHALL im Modus `on` nur an einem späteren „aus um�
 - **Beleg:** pytest `tests/test_auto_mode.py`
 
 #### Scenario: Ausgeschaltet während Home Assistant aus war
-- **WHEN** das Gerät beim Start aus ist und kein Plan steht
+- **WHEN** das Gerät beim Start aus ist, kein Plan steht und keiner per `cancel` verworfen wurde
 - **THEN** steht danach ein Plan
 - **Beleg:** pytest `tests/test_auto_mode.py`
